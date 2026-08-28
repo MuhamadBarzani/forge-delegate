@@ -1,6 +1,6 @@
 {
   "name": "forge-delegate",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "MCP server that relays coding work to other AI models (DeepSeek, Gemini, OpenAI, Ollama) so Claude Code saves tokens",
   "type": "module",
   "bin": {
@@ -16,6 +16,7 @@
     "server.mjs",
     "lib.mjs",
     "install.sh",
+    "skills/",
     "docs/",
     "README.md"
   ],

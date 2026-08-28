@@ -116,6 +116,17 @@ inline; long ones are auto-backgrounded by Claude Code (past ~2 min) or run deta
 
 Full guide: [docs/DELEGATION.md](docs/DELEGATION.md)
 
+### The `delegate-work` skill
+
+Setup also installs a Claude Code skill (`~/.claude/skills/delegate-work/`, or
+`<project>/.claude/skills/` under `--scope project`). Skip it with `--no-skill`.
+
+It exists because MCP server `instructions` are injected once at session start and
+get buried as the context fills — by turn 30 they lose to whatever is in front of the
+model. A skill description is re-matched against every user turn, so the delegation
+triggers ("write tests for", "rename X everywhere", "fix the lint errors") stay live
+for the whole session instead of decaying.
+
 ## Configuration
 
 Stored in `~/.forge-delegate/config.json`, read fresh on every call — change it anytime without

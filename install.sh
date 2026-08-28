@@ -12,6 +12,7 @@
 #   --targets a,b,c          hosts to register with: claude,codex,opencode (default all)
 #   --scope user|project     registration scope (default user)
 #   --project-dir <path>     project for --scope project (default current dir)
+#   --no-skill               skip installing the delegate-work skill for Claude Code
 #   --no-opencode            skip auto-installing opencode if missing
 #   --no-npx                 skip the npx route, force clone/checkout
 #   --help
@@ -23,6 +24,7 @@ SCOPE="user"
 PROJECT_DIR=""
 NO_OPENCODE=0
 NO_NPX=0
+NO_SKILL=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -34,10 +36,11 @@ while [[ $# -gt 0 ]]; do
     --scope=*) SCOPE="${1#*=}"; shift ;;
     --project-dir) PROJECT_DIR="${2:-}"; shift 2 ;;
     --project-dir=*) PROJECT_DIR="${1#*=}"; shift ;;
+    --no-skill) NO_SKILL=1; shift ;;
     --no-opencode) NO_OPENCODE=1; shift ;;
     --no-npx) NO_NPX=1; shift ;;
     --help|-h)
-      sed -n '3,18p' "$0"
+      sed -n '3,19p' "$0"
       exit 0 ;;
     *) echo "unknown option: $1"; exit 1 ;;
   esac
@@ -68,6 +71,7 @@ fi
 ARGS=(--targets "$TARGETS" --scope "$SCOPE")
 if [[ -n "$MODEL" ]]; then ARGS+=(--model "$MODEL"); fi
 if [[ "$SCOPE" == "project" ]]; then ARGS+=(--project-dir "$PROJECT_DIR"); fi
+if [[ "$NO_SKILL" -eq 1 ]]; then ARGS+=(--no-skill); fi
 
 # 3. Preferred route: published npm package (works on Windows, always latest)
 if [[ "$NO_NPX" -eq 0 ]] && command -v npx >/dev/null 2>&1; then

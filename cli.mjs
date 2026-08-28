@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline/promises";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -33,6 +33,19 @@ function launchCommand() {
 function launchArray() {
   const isPublished = here.includes(join("node_modules", "forge-delegate")) || here.includes("/.npm/_npx/");
   return isPublished ? ["npx", "-y", "forge-delegate", "serve"] : [process.execPath, join(here, "cli.mjs"), "serve"];
+}
+
+// The MCP server's `instructions` are injected once at session start and decay as the
+// context fills. A skill is re-matched against every user turn, so the delegation
+// triggers stay live for the whole session.
+function installClaudeSkill(scope, projectDir) {
+  const src = join(here, "skills", "delegate-work", "SKILL.md");
+  if (!existsSync(src)) return;
+  const root = scope === "user" ? join(homedir(), ".claude") : join(projectDir, ".claude");
+  const dest = join(root, "skills", "delegate-work", "SKILL.md");
+  mkdirSync(dirname(dest), { recursive: true });
+  copyFileSync(src, dest);
+  console.log(`  \u2713 delegate-work skill (${dest})`);
 }
 
 function registerClaude(launch, scope) {
@@ -125,7 +138,10 @@ async function setup() {
   // 2. Register with chosen hosts (claude / codex / opencode)
   for (const target of targets) {
     try {
-      if (target === "claude") registerClaude(launch, scope);
+      if (target === "claude") {
+        registerClaude(launch, scope);
+        if (!flags["no-skill"]) installClaudeSkill(scope, projectDir);
+      }
       else if (target === "codex") registerCodex(launchArr, scope, projectDir);
       else if (target === "opencode") registerOpencode(launchArr, scope, projectDir);
       else console.log(`  ✗ unknown target '${target}' (use claude,codex,opencode)`);
@@ -235,8 +251,9 @@ forge-delegate — delegate coding work from Claude Code/Codex/opencode to other
 
 Usage:
   forge-delegate setup [--model provider/model] [--targets claude,codex,opencode]
-                       [--scope user|project] [--project-dir <path>]
+                       [--scope user|project] [--project-dir <path>] [--no-skill]
                                              Interactive setup; flags optional (run bare to be prompted)
+                                             --no-skill skips installing the delegate-work skill
   forge-delegate serve                        Start the MCP server (used internally by agents)
   forge-delegate config get                   Show current configuration
   forge-delegate config set --model <m> [--agent <a>] [--variant <v>]

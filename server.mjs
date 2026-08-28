@@ -27,20 +27,28 @@ const RUNS_DIR = join(homedir(), ".forge-delegate", "runs");
 const here = dirname(fileURLToPath(import.meta.url));
 const VERSION = JSON.parse(readFileSync(join(here, "package.json"), "utf8")).version;
 
-const INSTRUCTIONS = `forge-delegate gives you a crew of external AI models to delegate coding work to. Hand off the high-volume, low-risk work (boilerplate, tests, lint/type fixes, mechanical edits) to a cheap or free model and keep the expensive agent focused on architecture and judgment calls.
+const INSTRUCTIONS = `forge-delegate hands coding work to cheap external models running as full agents. They read the project and write the code in their own loop, so the work never passes through your context. Spend your context on judgment; delegate the typing.
 
-COST POLICY — MANDATORY, NON-NEGOTIABLE:
-The user pays per delegated call on a budget plan. You MUST pick only cheap or free models for EVERY delegation (ask_model, delegate). NEVER pick top-tier, premium, flagship, or frontier models — not even "just this once" or for hard tasks. If a task seems too hard for a cheap model, split it into smaller delegated steps instead of upgrading. Run list_models and prefer free/cheap models (deepseek flash tiers, free opencode models, local ollama).
+DELEGATE BY DEFAULT — do not hand-write these yourself:
+- Tests for code that already exists.
+- Mechanical refactors: renames, signature changes, import rewrites, API migrations.
+- Lint, type, and build errors — paste the error output and delegate the fix.
+- Boilerplate: CRUD endpoints, config and schema files, adapters, fixtures, scaffolding.
+- Ports and translations between languages, frameworks, or file formats.
+- The same edit repeated across 3 or more files.
+- Reading a large file or directory to answer one narrow question — delegate the reading, keep your context clean.
+
+KEEP FOR YOURSELF: architecture, debugging an unknown root cause, security-sensitive code, anything where being wrong is expensive, and the review of whatever comes back. Delegation does not transfer responsibility for the result.
 
 Routing:
-- Quick one-shot questions → ask_model (direct API, no file access).
-- Multi-file edits/refactors/tests → delegate (inline by default; Claude Code auto-backgrounds calls past 2 min).
-- Parallel or fire-and-forget → delegate with background:true (returns a job id instantly); poll check_delegation for the result.
-- Follow-ups on a delegated area: pass the returned session id as continue_session.
-- Omit model/directory to use the configured defaults (get_delegate_config); change them anytime with set_delegate_config — never reinstall.
-- Never paste large files into your own context for delegation — delegate and let the agent read files itself.
+- One-shot question, no file access needed -> ask_model.
+- Anything touching files -> delegate (inline; Claude Code auto-backgrounds calls past 2 minutes).
+- Parallel fan-out or long jobs -> delegate with background:true, then poll check_delegation.
+- Follow-up in the same area -> pass the previous session id as continue_session.
+- Omit model/directory/agent: the configured defaults are already correct (get_delegate_config to see them, set_delegate_config to change them — never reinstall).
+- Never paste file contents into a task. Name the paths; the agent reads them itself.
 
-The per-tool descriptions are the authoritative reference.
+Cost: the configured default model is already a cheap or free tier — just use it. Do not override \`model\` upward to a premium or flagship tier; if a task looks too big for the default, split it into smaller delegations instead.
 `;
 
 const server = new McpServer(
@@ -137,7 +145,7 @@ server.tool(
 
 server.tool(
   "ask_model",
-  "Send a one-shot prompt to an external AI model and get its raw response. Fast direct API call; the model has NO file access and CANNOT take actions. For work requiring tools/files use delegate instead. model defaults to the configured defaultModel.",
+  "USE THIS INSTEAD OF ANSWERING FROM YOUR OWN REASONING when the question is self-contained and cheap to verify: a syntax or API detail, a regex, a short snippet, a second opinion on a design, a summary of text you already have. Sends a one-shot prompt to an external model and returns its raw response. Fast direct API call; the model has NO file access and CANNOT take actions — for anything touching files use delegate instead. Omit model to use the configured default (already a cheap tier).",
   {
     model: z.string().optional().describe("provider/model, e.g. deepseek/deepseek-v4-flash, ollama:llama3 (defaults to config defaultModel)"),
     prompt: z.string(),
@@ -154,7 +162,7 @@ server.tool(
 
 server.tool(
   "delegate",
-  "Delegate a coding task to another AI model running as a full agent (via local opencode): it reads your project, explores, and writes concrete code in its own tool loop — invisible to the caller's context. Runs INLINE by default (the result is returned in your context when done; Claude Code auto-backgrounds calls running past 2 minutes). Pass background:true to run detached and return a job id instantly, then poll check_delegation for the result — use that for parallel fan-out or hosts that block on long calls. Pass continue_session (returned by a previous delegation) to keep the same agent session instead of re-exploring. Optionally attach specific files in inline mode. model/directory/agent/autoApprove default from config.",
+  "USE THIS INSTEAD OF WRITING THE CODE YOURSELF when the task is: tests for code that already exists; a mechanical refactor (rename, signature change, import rewrite, API migration); fixing lint/type/build errors; boilerplate or scaffolding (CRUD endpoints, config, schemas, adapters, fixtures); a port between languages or frameworks; the same edit repeated across 3 or more files; or reading a large file/directory to answer one narrow question. Hands the task to another AI model running as a full agent via local opencode: it reads your project, explores, and writes concrete code in its own tool loop — none of which enters your context. Keep architecture, unknown-root-cause debugging, and security-sensitive code for yourself, and always review what comes back. Runs INLINE by default (result returned when done; Claude Code auto-backgrounds calls past 2 minutes). Pass background:true to run detached and get a job id instantly, then poll check_delegation — use that for parallel fan-out or hosts that block on long calls. Pass continue_session (returned by a previous delegation) to keep the same agent session instead of re-exploring. Never paste file contents into task: name the paths and let the agent read them. model/directory/agent/autoApprove default from config — omit them.",
   {
     model: z.string().optional().describe("provider/model format, e.g. opencode/mimo-v2.5-free (defaults to config defaultModel)"),
     task: z.string(),
