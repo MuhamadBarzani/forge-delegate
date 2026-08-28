@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>forge-delegate — install configurator</title>
+<meta name="description" content="Generate a one-line install command for the forge-delegate MCP server, or a prompt your AI agent can run for you.">
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #262b36; --text: #e6e8ee;
+    --muted: #9aa3b2; --accent: #4f8cff; --accent-dim: #2f5fb8; --ok: #3fb96b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 40px 20px 80px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  h1 code { color: var(--accent); }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; margin-bottom: 20px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; }
+  input[type=text], input[type=url] {
+    width: 100%; padding: 8px 10px; background: #0d0f13; color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; font: 13px/1.4 ui-monospace, Menlo, monospace;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    border: 1px solid var(--border); background: #0d0f13; color: var(--text);
+    border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; user-select: none;
+  }
+  .chip.on { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
+  .row { display: flex; gap: 18px; flex-wrap: wrap; }
+  .row .field { flex: 1; min-width: 200px; }
+  .radio { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; font-size: 14px; cursor: pointer; }
+  .hidden { display: none; }
+  pre {
+    background: #0d0f13; border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px 14px; overflow-x: auto; font: 13px/1.5 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; word-break: break-all; margin: 0 0 10px;
+  }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 0 0 12px; }
+  .bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .bar h2 { margin: 0; }
+  button {
+    background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+    padding: 7px 14px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { background: #6aa0ff; }
+  button.ok { background: var(--ok); }
+  .foot { color: var(--muted); font-size: 12.5px; margin-top: 30px; text-align: center; }
+  .foot a { color: var(--accent); }
+  .note { color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>forge-delegate <code>→</code> install configurator</h1>
+  <p class="sub">
+    MCP server that lets your primary agent (Claude Code / Codex / opencode) delegate grunt work to
+    cheaper models. Pick your options, then copy the one-line install command — or let your AI run it.
+  </p>
+
+  <div class="card">
+    <h2>1 · Configure</h2>
+
+    <div class="field">
+      <label for="url">Install script URL</label>
+      <input type="url" id="url" value="https://raw.githubusercontent.com/MuhamadBarzani/forge-delegate/main/install.sh">
+    </div>
+
+    <div class="field">
+      <label for="model">Default model (provider/model) — optional</label>
+      <input type="text" id="model" placeholder="e.g. opencode/deepseek-v4-flash-free" list="models">
+      <datalist id="models">
+        <option value="opencode/deepseek-v4-flash-free">
+        <option value="opencode/north-mini-code-free">
+        <option value="opencode/mimo-v2.5-free">
+        <option value="deepseek/deepseek-v4-flash">
+      </datalist>
+    </div>
+
+    <div class="field">
+      <label>Register with</label>
+      <div class="chips" id="targets">
+        <span class="chip on" data-target="claude">Claude Code</span>
+        <span class="chip on" data-target="codex">Codex</span>
+        <span class="chip on" data-target="opencode">opencode</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Scope</label>
+      <label class="radio"><input type="radio" name="scope" value="user" checked> user (all projects)</label>
+      <label class="radio"><input type="radio" name="scope" value="project"> project</label>
+    </div>
+
+    <div class="field hidden" id="projectDirField">
+      <label for="projectDir">Project directory (for project scope)</label>
+      <input type="text" id="projectDir" placeholder="/path/to/project">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="bar"><h2>2 · One-line install</h2><button id="copyCmd">Copy command</button></div>
+    <p class="hint">Run in any terminal. Pipes the installer; it clones, registers with your agents, and sets the default model.</p>
+    <pre id="cmd"></pre>
+  </div>
+
+  <div class="card">
+    <div class="bar"><h2>3 · Let your AI do it</h2><button id="copyPrompt">Copy prompt</button></div>
+    <p class="hint">Paste this into Claude Code, Codex, or opencode — the agent runs the command, checks it, and fixes problems itself.</p>
+    <pre id="prompt"></pre>
+  </div>
+
+  <p class="foot">
+    Repo: <a href="https://github.com/MuhamadBarzani/forge-delegate" target="_blank" rel="noopener">github.com/MuhamadBarzani/forge-delegate</a>
+    · Docs: <a href="./DELEGATION.md">delegation guide</a>
+  </p>
+</div>
+
+<script>
+(function () {
+  var urlEl = document.getElementById("url");
+  var modelEl = document.getElementById("model");
+  var targetEls = document.querySelectorAll("#targets .chip");
+  var scopeEls = document.querySelectorAll('input[name="scope"]');
+  var projectDirField = document.getElementById("projectDirField");
+  var projectDirEl = document.getElementById("projectDir");
+  var cmdEl = document.getElementById("cmd");
+  var promptEl = document.getElementById("prompt");
+
+  function getTargets() {
+    var on = [];
+    targetEls.forEach(function (c) { if (c.classList.contains("on")) on.push(c.dataset.target); });
+    return on;
+  }
+  function getScope() {
+    for (var i = 0; i < scopeEls.length; i++) if (scopeEls[i].checked) return scopeEls[i].value;
+    return "user";
+  }
+  function shellQuote(s) { return '"' + s.replace(/"/g, '\\"') + '"'; }
+
+  function command() {
+    var url = urlEl.value.trim() || "https://raw.githubusercontent.com/MuhamadBarzani/forge-delegate/main/install.sh";
+    var parts = ["curl", "-fsSL", url, "|", "bash", "-s", "--"];
+    var model = modelEl.value.trim();
+    if (model) parts.push("--model", shellQuote(model));
+    var targets = getTargets();
+    if (targets.length) parts.push("--targets", shellQuote(targets.join(",")));
+    var scope = getScope();
+    if (scope === "project") {
+      parts.push("--scope", "project");
+      var dir = projectDirEl.value.trim();
+      if (dir) parts.push("--project-dir", shellQuote(dir));
+    }
+    return parts.join(" ");
+  }
+
+  function prompt() {
+    var model = modelEl.value.trim();
+    var targets = getTargets().join(", ") || "(whichever you find installed)";
+    var scope = getScope();
+    var cmd = command();
+    var modelLine = model
+      ? 'Use "' + model + '" as the default model unless I say otherwise.'
+      : 'Use a cheap/free default model (e.g. opencode/deepseek-v4-flash-free) unless I say otherwise.';
+    return [
+      "Install and register the forge-delegate MCP server for me. " + modelLine +
+      " Register it with " + targets + ", and use \"" + scope + "\" scope.",
+      "",
+      "Run:",
+      "",
+      cmd,
+      "",
+      "Then show me the output, flag any warnings (missing opencode, unauthenticated provider, PATH issues), " +
+      "and confirm it's registered (claude mcp list and/or codex mcp). " +
+      "If something fails, diagnose and fix it rather than just reporting it."
+    ].join("\n");
+  }
+
+  function render() {
+    cmdEl.textContent = command();
+    promptEl.textContent = prompt();
+  }
+
+  function copy(el, btn, doneText) {
+    var text = el.textContent;
+    function done() {
+      var old = btn.textContent;
+      btn.textContent = doneText;
+      btn.classList.add("ok");
+      setTimeout(function () { btn.textContent = old; btn.classList.remove("ok"); }, 1600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+    } else { fallbackCopy(text); done(); }
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  targetEls.forEach(function (c) {
+    c.addEventListener("click", function () {
+      c.classList.toggle("on");
+      if (!getTargets().length) c.classList.add("on");
+      render();
+    });
+  });
+  scopeEls.forEach(function (r) {
+    r.addEventListener("change", function () {
+      projectDirField.classList.toggle("hidden", r.value !== "project");
+      render();
+    });
+  });
+  [urlEl, modelEl, projectDirEl].forEach(function (el) {
+    el.addEventListener("input", render);
+  });
+  document.getElementById("copyCmd").addEventListener("click", function (e) { copy(cmdEl, e.currentTarget, "Copied!"); });
+  document.getElementById("copyPrompt").addEventListener("click", function (e) { copy(promptEl, e.currentTarget, "Copied!"); });
+
+  render();
+})();
+</script>
+</body>
+</html>
