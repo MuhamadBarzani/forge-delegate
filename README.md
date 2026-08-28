@@ -38,8 +38,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/MuhamadBarzani/forge-delegat
 
 > GitHub Pages: enable it with *Settings → Pages → Deploy from a branch → `main` / `/docs`*.
 > The configurator lives at `docs/index.html`; if you host the repo under a different
-> owner/name, update the URL field on the page (and the `FORGE_DELEGATE_REPO` default in
-> `install.sh`).
+> owner/name, update the hardcoded URL in the page's `#url` input value (and the
+> `FORGE_DELEGATE_REPO` default in `install.sh`).
 
 Or manually:
 
