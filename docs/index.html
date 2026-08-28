@@ -101,7 +101,7 @@
 
     <div class="field picker">
       <label for="model">Default model (provider/model)</label>
-      <input type="text" id="model" placeholder="type to search, e.g. opencode/deepseek-v4-flash-free" autocomplete="off">
+      <input type="text" id="model" placeholder="type to search, e.g. opencode/mimo-v2.5-free" autocomplete="off">
       <div class="filters">
         <select id="provider" title="Provider">
           <option value="">all providers</option>
@@ -327,7 +327,7 @@
     var cmd = command();
     var modelLine = model
       ? 'Use "' + model + '" as the default model unless I say otherwise.'
-      : 'Use a cheap/free default model (e.g. opencode/deepseek-v4-flash-free) unless I say otherwise.';
+      : 'Use a cheap/free default model (e.g. opencode/mimo-v2.5-free) unless I say otherwise.';
     return [
       "Install and register the forge-delegate MCP server for me. " + modelLine +
       " Register it with " + targets + ", and use \"" + scope + "\" scope.",

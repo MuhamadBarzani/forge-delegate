@@ -27,13 +27,13 @@ so you're picking from actual available models rather than guessing.
 **One-line installer** (host the repo or use a checkout):
 
 ```bash
-bash install.sh --model "opencode/deepseek-v4-flash-free" --targets "claude,codex"
+bash install.sh --model "opencode/mimo-v2.5-free" --targets "claude,codex"
 ```
 
 Or from a remote copy:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MuhamadBarzani/forge-delegate/main/install.sh) -- --model "opencode/deepseek-v4-flash-free" --targets "claude,codex"
+bash <(curl -fsSL https://raw.githubusercontent.com/MuhamadBarzani/forge-delegate/main/install.sh) -- --model "opencode/mimo-v2.5-free" --targets "claude,codex"
 ```
 
 > GitHub Pages: enable it with *Settings → Pages → Deploy from a branch → `main` / `/docs`*.
@@ -44,7 +44,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/MuhamadBarzani/forge-delegat
 Or manually:
 
 ```bash
-node cli.mjs setup --model "opencode/deepseek-v4-flash-free" --targets claude,codex,opencode
+node cli.mjs setup --model "opencode/mimo-v2.5-free" --targets claude,codex,opencode
 ```
 
 The installer/`setup` will:
@@ -69,10 +69,10 @@ Then restart your agent and confirm the server is connected: `/mcp` in Claude Co
 opencode ships free no-auth models under `opencode/`:
 
 ```bash
-bash install.sh --model "opencode/deepseek-v4-flash-free" --targets "claude,codex"
+bash install.sh --model "opencode/mimo-v2.5-free" --targets "claude,codex"
 ```
 
-Other free options: `opencode/north-mini-code-free`, `opencode/mimo-v2.5-free`. Free tiers are
+Other free options: `opencode/hy3-free`, `opencode/nemotron-3.5-lightning-free`. Free tiers are
 rate-limited; switch anytime with `forge-delegate config set --model <m>`.
 
 ## Tools
@@ -130,7 +130,7 @@ Every delegation tool also accepts per-call `model`, `directory`, `agent`, `auto
 
 ## Models
 
-- **opencode provider** — free no-auth models (`opencode/deepseek-v4-flash-free`, ...) plus
+- **opencode provider** — free no-auth models (`opencode/mimo-v2.5-free`, ...) plus
   anything you have logged in via `opencode auth login <provider>`.
 - **Direct API from opencode logins** — `provider/model` for OpenAI-compatible providers.
 - **Custom providers** — OpenAI-compatible providers defined in `opencode.json`
