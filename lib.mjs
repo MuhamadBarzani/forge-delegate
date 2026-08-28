@@ -1,10 +1,8 @@
-import { execFile, spawn } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
-const execFileAsync = promisify(execFile);
 export const OPENCODE_TIMEOUT = Number(process.env.FORGE_OPENCODE_TIMEOUT ?? 900_000);
 const CONFIG_DIR = join(homedir(), ".forge-delegate");
 const AUTH_PATH = join(homedir(), ".local/share/opencode/auth.json");
@@ -342,16 +340,5 @@ export async function runOne(model, prompt) {
   }
 
   throw new Error(`unknown model '${model}' — see list_models`);
-}
-
-export async function gitDiff() {  try {
-    const { stdout } = await execFileAsync("git", ["diff", "HEAD"], {
-      cwd: process.cwd(),
-      maxBuffer: 5 * 1024 * 1024,
-    });
-    return stdout.trim();
-  } catch {
-    return null;
-  }
 }
 

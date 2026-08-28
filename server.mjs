@@ -10,7 +10,6 @@ import {
   logUsage,
   opencodeRun,
   runOne,
-  gitDiff,
   opencodeArgs,
   parseEvents,
   pickVariant,
@@ -42,7 +41,7 @@ The per-tool descriptions are the authoritative reference.
 `;
 
 const server = new McpServer(
-  { name: "forge-delegate", version: "1.0.0" },
+  { name: "forge-delegate", version: "1.0.4" },
   { instructions: INSTRUCTIONS }
 );
 
@@ -79,7 +78,22 @@ async function startBackgroundJob(model, task, opts = {}) {
     stdio: ["ignore", out, out],
   });
   child.unref();
-  writeFileSync(join(RUNS_DIR, `${id}.json`), JSON.stringify({ id, pid: child.pid, model, directory: cwd, started: Date.now(), logPath }));
+  const started = Date.now();
+  const deadline = opts.timeoutMs ? started + opts.timeoutMs : null;
+  if (deadline) {
+    setTimeout(() => {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {}
+      try {
+        process.kill(child.pid, "SIGKILL");
+      } catch {}
+    }, opts.timeoutMs).unref();
+  }
+  writeFileSync(
+    join(RUNS_DIR, `${id}.json`),
+    JSON.stringify({ id, pid: child.pid, model, directory: cwd, started, deadline, logPath })
+  );
   return id;
 }
 
@@ -159,6 +173,7 @@ server.tool(
           directory: r.directory,
           agent: r.agent,
           autoApprove: r.autoApprove,
+          timeoutMs: r.timeoutMs,
         });
         return `Started background job ${id}. Poll with check_delegation(id: "${id}").`;
       });
@@ -202,7 +217,9 @@ server.tool(
       const parsed = parseEvents(log);
       const tail = parsed.text || "(agent still thinking, no text output yet)";
       const footer = parsed.sessionId ? ` · session: ${parsed.sessionId}` : "";
-      return `[${running ? "RUNNING" : "DONE"}] ${id} (${meta.model}, ${Math.round((Date.now() - meta.started) / 1000)}s)${footer}\n\n${tail.slice(-8000)}`;
+      let status = running ? "RUNNING" : "DONE";
+      if (meta.deadline && Date.now() > meta.deadline) status = "TIMED OUT";
+      return `[${status}] ${id} (${meta.model}, ${Math.round((Date.now() - meta.started) / 1000)}s)${footer}\n\n${tail.slice(-8000)}`;
     })
 );
 

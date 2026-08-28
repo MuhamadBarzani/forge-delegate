@@ -169,7 +169,6 @@ function configCmd(argv) {
     if (flags.variant) patch.defaultVariant = flags.variant;
     if (flags.timeout) patch.timeoutMs = Number(flags.timeout) * 1000;
     if (flags.dir) patch.defaultDirectory = flags.dir;
-    if (flags["default-dir"]) patch.defaultDirectory = flags["default-dir"];
     if (flags.autoApprove !== undefined) patch.autoApprove = flags.autoApprove === "true" || flags.autoApprove === "1" || flags.autoApprove === true;
     saveConfig(patch);
     console.log(`updated ${configPath()}`);
