@@ -30,8 +30,8 @@ Unsure → keep it.
 | Need | Tool |
 |---|---|
 | Quick one-shot question, no file access needed | `ask_model` |
-| A self-contained task with concrete code output | `delegate_task` |
-| Autonomous multi-file work, don't want to block | `delegate_agent` + `check_delegation` |
+| A self-contained coding task (inline; auto-backgrounds past ~2 min in Claude Code) | `delegate` |
+| Parallel fan-out or fire-and-forget | `delegate` with `background:true` + `check_delegation` |
 | See what's available | `list_models` |
 
 ## Cost policy (non-negotiable)

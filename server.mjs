@@ -28,12 +28,12 @@ const RUNS_DIR = join(homedir(), ".forge-delegate", "runs");
 const INSTRUCTIONS = `forge-delegate gives you a crew of external AI models to delegate coding work to. Hand off the high-volume, low-risk work (boilerplate, tests, lint/type fixes, mechanical edits) to a cheap or free model and keep the expensive agent focused on architecture and judgment calls.
 
 COST POLICY — MANDATORY, NON-NEGOTIABLE:
-The user pays per delegated call on a budget plan. You MUST pick only cheap or free models for EVERY delegation (ask_model, delegate_task, delegate_agent). NEVER pick top-tier, premium, flagship, or frontier models — not even "just this once" or for hard tasks. If a task seems too hard for a cheap model, split it into smaller delegated steps instead of upgrading. Run list_models and prefer free/cheap models (deepseek flash tiers, free opencode models, local ollama).
+The user pays per delegated call on a budget plan. You MUST pick only cheap or free models for EVERY delegation (ask_model, delegate). NEVER pick top-tier, premium, flagship, or frontier models — not even "just this once" or for hard tasks. If a task seems too hard for a cheap model, split it into smaller delegated steps instead of upgrading. Run list_models and prefer free/cheap models (deepseek flash tiers, free opencode models, local ollama).
 
 Routing:
 - Quick one-shot questions → ask_model (direct API, no file access).
-- Multi-file edits/refactors/tests → delegate_task (synchronous) or delegate_agent (background).
-- delegate_agent returns a job id instantly; poll check_delegation for the result.
+- Multi-file edits/refactors/tests → delegate (inline by default; Claude Code auto-backgrounds calls past 2 min).
+- Parallel or fire-and-forget → delegate with background:true (returns a job id instantly); poll check_delegation for the result.
 - Follow-ups on a delegated area: pass the returned session id as continue_session.
 - Omit model/directory to use the configured defaults (get_delegate_config); change them anytime with set_delegate_config — never reinstall.
 - Never paste large files into your own context for delegation — delegate and let the agent read files itself.
@@ -120,7 +120,7 @@ server.tool(
 
 server.tool(
   "ask_model",
-  "Send a one-shot prompt to an external AI model and get its raw response. Fast direct API call; the model has NO file access and CANNOT take actions. For work requiring tools/files use delegate_agent instead. model defaults to the configured defaultModel.",
+  "Send a one-shot prompt to an external AI model and get its raw response. Fast direct API call; the model has NO file access and CANNOT take actions. For work requiring tools/files use delegate instead. model defaults to the configured defaultModel.",
   {
     model: z.string().optional().describe("provider/model, e.g. deepseek/deepseek-v4-flash, ollama:llama3 (defaults to config defaultModel)"),
     prompt: z.string(),
@@ -136,21 +136,34 @@ server.tool(
 );
 
 server.tool(
-  "delegate_task",
-  "Delegate a coding task to another AI model running as a full agent (via local opencode): it can read your project and answer with concrete code. Optionally attach specific files. model/directory/agent/autoApprove default from config.",
+  "delegate",
+  "Delegate a coding task to another AI model running as a full agent (via local opencode): it reads your project, explores, and writes concrete code in its own tool loop — invisible to the caller's context. Runs INLINE by default (the result is returned in your context when done; Claude Code auto-backgrounds calls running past 2 minutes). Pass background:true to run detached and return a job id instantly, then poll check_delegation for the result — use that for parallel fan-out or hosts that block on long calls. Pass continue_session (returned by a previous delegation) to keep the same agent session instead of re-exploring. Optionally attach specific files in inline mode. model/directory/agent/autoApprove default from config.",
   {
     model: z.string().optional().describe("provider/model format, e.g. opencode/mimo-v2.5-free (defaults to config defaultModel)"),
     task: z.string(),
-    files: z.array(z.string()).optional(),
+    files: z.array(z.string()).optional().describe("specific files to attach (inline mode)"),
+    background: z.boolean().optional().describe("run detached and return a job id (default false)"),
+    continue_session: z.string().optional().describe("session id returned by a previous delegation"),
     directory: z.string().optional().describe("absolute path to run in (defaults to config defaultDirectory, else server cwd)"),
     agent: z.string().optional().describe("opencode agent to use (defaults to config defaultAgent)"),
     autoApprove: z.boolean().optional().describe("auto-approve permissions (defaults to config autoApprove, true)"),
     profile: z.string().optional().describe("named config profile to apply"),
   },
-  async ({ model, task, files, directory, agent, autoApprove, profile }) => {
+  async ({ model, task, files, background, continue_session, directory, agent, autoApprove, profile }) => {
     const r = resolveConfig({ model, directory, agent, autoApprove, profile });
     if (!r.model) return { content: [{ type: "text", text: "ERROR: no model specified and no defaultModel configured. Call set_delegate_config or pass model." }], isError: true };
-    return withUsage("delegate_task", r.model, async () => {
+    if (background) {
+      return withUsage("delegate", r.model, async () => {
+        const id = await startBackgroundJob(r.model, task, {
+          sessionId: continue_session,
+          directory: r.directory,
+          agent: r.agent,
+          autoApprove: r.autoApprove,
+        });
+        return `Started background job ${id}. Poll with check_delegation(id: "${id}").`;
+      });
+    }
+    return withUsage("delegate", r.model, async () => {
       const res = await opencodeRun(r.model, task, {
         files,
         directory: r.directory,
@@ -159,33 +172,6 @@ server.tool(
         timeoutMs: r.timeoutMs,
       });
       return `${res.text || "(no summary — agent may have only edited files)"}${sessionFooter(res.sessionId, res.tokens)} — pass session id as continue_session to follow up`;
-    });
-  }
-);
-
-server.tool(
-  "delegate_agent",
-  "Fully delegate a coding task to another AI model working autonomously on this project (via local opencode): it explores, reads, edits and creates files in its own loop — invisible to the caller's context. Runs in the BACKGROUND: returns a job id instantly, poll with check_delegation to get the result. Pass continue_session (returned by a previous delegation) to keep the same agent session instead of re-exploring. model/directory/agent/autoApprove default from config.",
-  {
-    model: z.string().optional().describe("provider/model format, e.g. opencode/mimo-v2.5-free (defaults to config defaultModel)"),
-    task: z.string(),
-    continue_session: z.string().optional().describe("session id returned by a previous delegation"),
-    directory: z.string().optional().describe("absolute path to run in (defaults to config defaultDirectory, else server cwd)"),
-    agent: z.string().optional().describe("opencode agent to use (defaults to config defaultAgent)"),
-    autoApprove: z.boolean().optional().describe("auto-approve permissions (defaults to config autoApprove, true)"),
-    profile: z.string().optional().describe("named config profile to apply"),
-  },
-  async ({ model, task, continue_session, directory, agent, autoApprove, profile }) => {
-    const r = resolveConfig({ model, directory, agent, autoApprove, profile });
-    if (!r.model) return { content: [{ type: "text", text: "ERROR: no model specified and no defaultModel configured. Call set_delegate_config or pass model." }], isError: true };
-    return withUsage("delegate_agent", r.model, async () => {
-      const id = await startBackgroundJob(r.model, task, {
-        sessionId: continue_session,
-        directory: r.directory,
-        agent: r.agent,
-        autoApprove: r.autoApprove,
-      });
-      return `Started background job ${id}. Poll with check_delegation(id: "${id}").`;
     });
   }
 );
@@ -229,7 +215,7 @@ server.tool(
     const { profiles, ...rest } = cfg;
     const lines = Object.entries(rest).map(([k, v]) => `  ${k}: ${v ?? "(unset)"}`);
     const prof = Object.entries(profiles).map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`).join("\n") || "  (none)";
-    return `config: ${configPath()}\n${lines.join("\n")}\nprofiles:\n${prof}`;
+    return { content: [{ type: "text", text: `config: ${configPath()}\n${lines.join("\n")}\nprofiles:\n${prof}` }] };
   }
 );
 
@@ -249,7 +235,7 @@ server.tool(
     try {
       saveConfig(patch);
       const cfg = loadConfig();
-      return `Updated. defaultModel=${cfg.defaultModel ?? "(unset)"}, autoApprove=${cfg.autoApprove}, defaultDirectory=${cfg.defaultDirectory ?? "(unset)"}, profiles=${Object.keys(cfg.profiles).join(",") || "none"}`;
+      return { content: [{ type: "text", text: `Updated. defaultModel=${cfg.defaultModel ?? "(unset)"}, autoApprove=${cfg.autoApprove}, defaultDirectory=${cfg.defaultDirectory ?? "(unset)"}, profiles=${Object.keys(cfg.profiles).join(",") || "none"}` }] };
     } catch (e) {
       return { content: [{ type: "text", text: `ERROR: ${e.message}` }], isError: true };
     }

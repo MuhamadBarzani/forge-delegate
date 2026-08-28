@@ -91,16 +91,16 @@ rate-limited; switch anytime with `forge-delegate config set --model <m>`.
 | Tool | What it does | Context cost |
 |---|---|---|
 | `ask_model` | One-shot question to any model (direct API, no file access) | Small |
-| `delegate_task` | Send a task + optional files to a model agent running via opencode; returns result + session id | Medium |
-| `delegate_agent` | Model works **autonomously** in the **background** — returns a job id instantly; poll `check_delegation` | Tiny |
+| `delegate` | Model works **autonomously** via opencode's own tool loop — inline by default; `background:true` returns a job id to poll via `check_delegation` | Tiny→Medium |
 | `check_delegation` | Poll a background job (or list all with no id) | Tiny |
 | `list_models` | List local/keyless, direct-API, and agentic models | Small |
 | `get_delegate_config` | Read current configuration (default model, directory, autoApprove, profiles) | Tiny |
 | `set_delegate_config` | Change configuration at runtime — no reinstall | Tiny |
 
-`delegate_agent` is the token-saver: the external model gets its own tool loop executed by
-opencode locally. File contents never touch your main agent's context. The delegation runs as a
-detached background process, so the MCP call returns instantly.
+`delegate` is the token-saver: the external model gets its own tool loop executed by
+opencode locally. File contents never touch your main agent's context. Fast tasks return
+inline; long ones are auto-backgrounded by Claude Code (past ~2 min) or run detached with
+`background:true` — so the delegation never blocks your session.
 
 ## When to delegate
 
