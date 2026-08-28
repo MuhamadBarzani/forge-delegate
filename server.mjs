@@ -4,7 +4,8 @@ import { z } from "zod";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, openSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import {
   logUsage,
@@ -23,6 +24,8 @@ import {
 
 const execFileAsync = promisify(execFile);
 const RUNS_DIR = join(homedir(), ".forge-delegate", "runs");
+const here = dirname(fileURLToPath(import.meta.url));
+const VERSION = JSON.parse(readFileSync(join(here, "package.json"), "utf8")).version;
 
 const INSTRUCTIONS = `forge-delegate gives you a crew of external AI models to delegate coding work to. Hand off the high-volume, low-risk work (boilerplate, tests, lint/type fixes, mechanical edits) to a cheap or free model and keep the expensive agent focused on architecture and judgment calls.
 
@@ -41,7 +44,7 @@ The per-tool descriptions are the authoritative reference.
 `;
 
 const server = new McpServer(
-  { name: "forge-delegate", version: "1.0.4" },
+  { name: "forge-delegate", version: VERSION },
   { instructions: INSTRUCTIONS }
 );
 
