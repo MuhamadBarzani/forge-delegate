@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # forge-delegate installer — register the MCP server with Claude Code, Codex, and/or opencode.
 #
-# Works two ways:
-#   A) From a checkout:        bash install.sh [options...]
-#   B) From a pipe (curl|bash): curl -fsSL <raw-url> | bash -s -- [options...]
-#
-# In pipe mode the repo is cloned into $FORGE_DELEGATE_DIR
-# (default ~/.local/share/forge-delegate) from $FORGE_DELEGATE_REPO
-# (default https://github.com/MuhamadBarzani/forge-delegate.git).
+# Preferred route: the published npm package (works everywhere, always latest):
+#     npx -y forge-delegate setup --model ... --targets ... --scope ...
+# If that fails (e.g. package not published yet / offline), this script falls back to a
+# repo checkout or clone. From a checkout:        bash install.sh [options...]
+# From a pipe:                                    curl -fsSL <raw-url> | bash -s -- [options...]
 #
 # Options:
 #   --model provider/model   default model so calls can omit it
@@ -15,6 +13,7 @@
 #   --scope user|project     registration scope (default user)
 #   --project-dir <path>     project for --scope project (default current dir)
 #   --no-opencode            skip auto-installing opencode if missing
+#   --no-npx                 skip the npx route, force clone/checkout
 #   --help
 set -euo pipefail
 
@@ -23,6 +22,7 @@ TARGETS="claude,codex,opencode"
 SCOPE="user"
 PROJECT_DIR=""
 NO_OPENCODE=0
+NO_NPX=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -35,8 +35,9 @@ while [[ $# -gt 0 ]]; do
     --project-dir) PROJECT_DIR="${2:-}"; shift 2 ;;
     --project-dir=*) PROJECT_DIR="${1#*=}"; shift ;;
     --no-opencode) NO_OPENCODE=1; shift ;;
+    --no-npx) NO_NPX=1; shift ;;
     --help|-h)
-      sed -n '3,14p' "$0"
+      sed -n '3,18p' "$0"
       exit 0 ;;
     *) echo "unknown option: $1"; exit 1 ;;
   esac
@@ -63,7 +64,27 @@ if [[ "$NO_OPENCODE" -eq 0 ]] && ! command -v opencode >/dev/null 2>&1; then
   command -v opencode >/dev/null 2>&1 || echo "· opencode still not on PATH — install it from https://opencode.ai and re-run. (Delegations need it.)"
 fi
 
-# 2. Resolve the app directory: local checkout, or clone into place (pipe mode).
+# 2. Build the setup args once, used by both routes
+ARGS=(--targets "$TARGETS" --scope "$SCOPE")
+if [[ -n "$MODEL" ]]; then ARGS+=(--model "$MODEL"); fi
+if [[ "$SCOPE" == "project" ]]; then ARGS+=(--project-dir "$PROJECT_DIR"); fi
+
+# 3. Preferred route: published npm package (works on Windows, always latest)
+if [[ "$NO_NPX" -eq 0 ]] && command -v npx >/dev/null 2>&1; then
+  echo "· installing via npx (published package)..."
+  if npx -y forge-delegate setup "${ARGS[@]}"; then
+    echo
+    echo "Done. Restart your agent, then confirm the server is connected:"
+    echo "  Claude Code : /mcp"
+    echo "  Codex       : codex mcp"
+    echo "  opencode    : opencode"
+    echo "Change defaults anytime: forge-delegate config set --model <m>"
+    exit 0
+  fi
+  echo "· npx route unavailable (not published yet?) — falling back to a repo copy..."
+fi
+
+# 4. Fallback: local checkout, or clone into place (pipe mode)
 SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 if [[ -f "$SCRIPT_DIR/cli.mjs" ]]; then
   APP_DIR="$SCRIPT_DIR"
@@ -81,16 +102,11 @@ else
   fi
 fi
 
-# 3. Install JS deps if not present
+# 5. Install JS deps if not present
 if [[ ! -d "$APP_DIR/node_modules" ]]; then
   echo "· installing dependencies..."
   (cd "$APP_DIR" && npm install --silent)
 fi
-
-# 4. Register with the requested hosts
-ARGS=(--targets "$TARGETS" --scope "$SCOPE")
-if [[ -n "$MODEL" ]]; then ARGS+=(--model "$MODEL"); fi
-if [[ "$SCOPE" == "project" ]]; then ARGS+=(--project-dir "$PROJECT_DIR"); fi
 
 node "$APP_DIR/cli.mjs" setup "${ARGS[@]}"
 

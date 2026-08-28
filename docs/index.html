@@ -94,11 +94,6 @@
   <div class="card">
     <h2>1 · Configure</h2>
 
-    <div class="field">
-      <label for="url">Install script URL</label>
-      <input type="url" id="url" value="https://raw.githubusercontent.com/MuhamadBarzani/forge-delegate/main/install.sh" readonly>
-    </div>
-
     <div class="field picker">
       <label for="model">Default model (provider/model)</label>
       <input type="text" id="model" placeholder="type to search, e.g. opencode/mimo-v2.5-free" autocomplete="off">
@@ -150,7 +145,7 @@
 
   <div class="card">
     <div class="bar"><h2>2 · One-line install</h2><button id="copyCmd">Copy command</button></div>
-    <p class="hint">Run in any terminal. Pipes the installer; it clones, registers with your agents, and sets the default model.</p>
+    <p class="hint">npx pulls the latest package and registers it with your agents — works on Windows (cmd/PowerShell), macOS, and Linux, no bash needed.</p>
     <pre id="cmd"></pre>
   </div>
 
@@ -174,7 +169,6 @@
   var CACHE_TTL = 7 * 24 * 3600 * 1000;
   var COMMON = ["opencode", "deepseek", "openai", "google", "anthropic", "ollama", "mistral", "meta", "qwen", "xai", "groq", "moonshotai", "zhipuai", "nvidia", "amazon"];
 
-  var urlEl = document.getElementById("url");
   var modelEl = document.getElementById("model");
   var providerEl = document.getElementById("provider");
   var freeEl = document.getElementById("freeOnly");
@@ -310,9 +304,8 @@
   }
   function shellQuote(s) { return '"' + s.replace(/"/g, '\\"') + '"'; }
 
-  function command() {
-    var url = urlEl.value.trim() || "https://raw.githubusercontent.com/MuhamadBarzani/forge-delegate/main/install.sh";
-    var parts = ["curl", "-fsSL", url, "|", "bash", "-s", "--"];
+  function setupFlags() {
+    var parts = [];
     var model = modelEl.value.trim();
     if (model) parts.push("--model", shellQuote(model));
     var targets = getTargets();
@@ -323,7 +316,11 @@
       var dir = projectDirEl.value.trim();
       if (dir) parts.push("--project-dir", shellQuote(dir));
     }
-    return parts.join(" ");
+    return parts;
+  }
+
+  function command() {
+    return ["npx", "-y", "forge-delegate", "setup"].concat(setupFlags()).join(" ");
   }
 
   function prompt() {
@@ -387,7 +384,7 @@
       render();
     });
   });
-  [urlEl, projectDirEl].forEach(function (el) { el.addEventListener("input", render); });
+  [projectDirEl].forEach(function (el) { el.addEventListener("input", render); });
 
   modelEl.addEventListener("input", function () { render(); renderList(); });
   modelEl.addEventListener("focus", showList);

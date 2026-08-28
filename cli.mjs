@@ -86,26 +86,43 @@ function registerOpencode(launchArr, scope, projectDir) {
   console.log(`  ✓ opencode (${path})`);
 }
 
-function saveDefaultModel(model) {
-  if (!model) return;
-  saveConfig({ defaultModel: model });
-  console.log(`  ✓ default model set: ${model}`);
-}
-
 async function setup() {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const ask = (q) => rl.question(q);
   const flags = parseArgs(process.argv.slice(3));
-  const targets = (flags.targets ?? "claude,codex,opencode").split(",").map((s) => s.trim().toLowerCase());
-  const scope = flags.scope ?? "user";
-  const projectDir = flags["project-dir"] ?? process.cwd();
-  const model = flags.model;
+  const current = loadConfig();
+
+  // Flags win; anything omitted is asked interactively (Enter accepts the [default]).
+  // In a non-terminal (piped/automated) run, prompts are skipped and defaults are used.
+  const interactive = !!process.stdin.isTTY;
+  let model = flags.model;
+  let targets = flags.targets;
+  let scope = flags.scope;
+  let projectDir = flags["project-dir"];
+
+  console.log("\n=== forge-delegate setup ===\n");
+  if (interactive) console.log("Press Enter to accept the suggested [default], or type a value.\n");
+
+  if (!model) {
+    const def = current.defaultModel ?? "opencode/mimo-v2.5-free";
+    model = interactive ? ((await ask(`Default model [${def}]: `)) ?? "").trim() || def : def;
+  }
+  if (!targets) targets = "claude,codex,opencode";
+  if (!scope) scope = "user";
+  if (scope === "project" && !projectDir) projectDir = process.cwd();
+  projectDir = projectDir ?? process.cwd();
+  targets = targets.split(",").map((s) => s.trim().toLowerCase());
 
   const launch = launchCommand();
   const launchArr = launchArray();
-  console.log("\n=== forge-delegate setup ===\n");
 
-  // 1. Register with chosen hosts (claude / codex / opencode)
+  // 1. Set the default model first so it's saved even if registration hits an issue
+  if (model && model !== current.defaultModel) {
+    saveConfig({ defaultModel: model });
+    console.log(`  ✓ default model set: ${model}`);
+  }
+
+  // 2. Register with chosen hosts (claude / codex / opencode)
   for (const target of targets) {
     try {
       if (target === "claude") registerClaude(launch, scope);
@@ -117,10 +134,7 @@ async function setup() {
     }
   }
 
-  // 3. Set a default model so callers can omit model
-  saveDefaultModel(model);
-
-  // 4. Check opencode logins
+  // 3. Check opencode logins
   let authCount = 0;
   try {
     const authPath = join(homedir(), ".local/share/opencode/auth.json");
@@ -131,7 +145,7 @@ async function setup() {
   } else {
     console.log("\nNo opencode logins found. To enable models, run:");
     console.log("  opencode auth login <provider>   (e.g. opencode auth login deepseek)");
-    await ask("Press Enter when done (or Ctrl+C to skip): ");
+    if (interactive) await ask("Press Enter when done (or Ctrl+C to skip): ");
   }
 
   console.log(`
@@ -223,7 +237,7 @@ forge-delegate — delegate coding work from Claude Code/Codex/opencode to other
 Usage:
   forge-delegate setup [--model provider/model] [--targets claude,codex,opencode]
                        [--scope user|project] [--project-dir <path>]
-                                             Register MCP server with your agents + install routing rules
+                                             Interactive setup; flags optional (run bare to be prompted)
   forge-delegate serve                        Start the MCP server (used internally by agents)
   forge-delegate config get                   Show current configuration
   forge-delegate config set --model <m> [--agent <a>] [--variant <v>]

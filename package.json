@@ -8,8 +8,17 @@
   },
   "scripts": {
     "setup": "node cli.mjs setup",
-    "start": "node cli.mjs serve"
+    "start": "node cli.mjs serve",
+    "prepublishOnly": "node --check cli.mjs && node --check server.mjs && node --check lib.mjs"
   },
+  "files": [
+    "cli.mjs",
+    "server.mjs",
+    "lib.mjs",
+    "install.sh",
+    "docs/",
+    "README.md"
+  ],
   "keywords": ["mcp", "claude", "claude-code", "ai", "deepseek", "gemini", "ollama", "delegation"],
   "license": "MIT",
   "engines": {

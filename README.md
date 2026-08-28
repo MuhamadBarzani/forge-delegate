@@ -24,30 +24,27 @@ tests, lint/type fixes) and reports back.
 [models.dev](https://models.dev) catalog — searchable, with free/cheap filters and real prices,
 so you're picking from actual available models rather than guessing.
 
-**One-line installer** (host the repo or use a checkout):
+**npx (recommended — works everywhere, no bash needed):**
 
 ```bash
-bash install.sh --model "opencode/mimo-v2.5-free" --targets "claude,codex"
+npx -y forge-delegate setup --model "opencode/mimo-v2.5-free" --targets "claude,codex,opencode"
 ```
 
-Or from a remote copy:
+That's it — npx pulls the latest package and `setup` registers the MCP server with the agents
+you chose and sets your default model. Works on Windows (cmd/PowerShell), macOS, and Linux —
+no bash needed, and always runs the latest version.
 
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MuhamadBarzani/forge-delegate/main/install.sh) -- --model "opencode/mimo-v2.5-free" --targets "claude,codex"
-```
+Run `setup` **without flags** and it walks you through the choices interactively (defaults in
+`[brackets]`, Enter accepts); pass any of the flags to skip that prompt. In an automated/non-terminal
+run it just uses sensible defaults.
 
 > GitHub Pages: enable it with *Settings → Pages → Deploy from a branch → `main` / `/docs`*.
-> The configurator lives at `docs/index.html`; if you host the repo under a different
-> owner/name, update the hardcoded URL in the page's `#url` input value (and the
-> `FORGE_DELEGATE_REPO` default in `install.sh`).
+> The configurator lives at `docs/index.html`. `install.sh`'s `FORGE_DELEGATE_REPO` default
+> (and the raw URL inside it) matters only if you self-host the fallback installer.
+>
+> Working on a checkout yourself? `node cli.mjs setup` does the same thing.
 
-Or manually:
-
-```bash
-node cli.mjs setup --model "opencode/mimo-v2.5-free" --targets claude,codex,opencode
-```
-
-The installer/`setup` will:
+`setup` will:
 1. Register the MCP server with each agent you chose (`--targets claude,codex,opencode`).
 2. Set your default model (`--model`) so calls can omit `model`.
 
@@ -66,6 +63,11 @@ Then restart your agent and confirm the server is connected: `/mcp` in Claude Co
   handles: `opencode auth login <provider>`. forge-delegate reuses your opencode's credentials
   and never stores API keys. (Ollama needs no key, just the Ollama app running.)
 
+### Windows
+
+Use the `npx` route — no bash needed (works in cmd/PowerShell). Drop `codex` from `--targets`
+(Codex CLI isn't natively supported on Windows; use `--targets "claude,opencode"`).
+
 ### Scope
 
 | `--scope` | Claude Code | Codex | opencode |
@@ -78,7 +80,7 @@ Then restart your agent and confirm the server is connected: `/mcp` in Claude Co
 opencode ships free no-auth models under `opencode/`:
 
 ```bash
-bash install.sh --model "opencode/mimo-v2.5-free" --targets "claude,codex"
+npx -y forge-delegate setup --model "opencode/mimo-v2.5-free" --targets "claude,codex"
 ```
 
 Other free options: `opencode/hy3-free`, `opencode/nemotron-3.5-lightning-free`. Free tiers are
@@ -163,6 +165,20 @@ forge-delegate config     get | set | path
 forge-delegate status     Show opencode logins and usage summary
 forge-delegate stats      Show detailed usage statistics
 ```
+
+## Publishing (npm)
+
+The primary install is `npx -y forge-delegate setup`, so the package must be on npm. Checklist:
+
+1. `npm run prepublishOnly` — syntax-checks all entry files (runs automatically on publish).
+2. `npm pack --dry-run` — confirm the tarball contains only `cli.mjs`, `server.mjs`, `lib.mjs`,
+   `install.sh`, `docs/`, `README.md` (via the `files` field), not `node_modules`.
+3. Bump `version` in `package.json` (and the root `version` in `package-lock.json`).
+4. `npm login && npm publish` — the `bin` field makes `npx forge-delegate …` work.
+
+Also make sure the GitHub repo exists at `MuhamadBarzani/forge-delegate` with Pages enabled on
+`/docs` (configurator) — the `raw.githubusercontent.com` install URL and the configurator's
+hardcoded URL point there.
 
 ## License
 
