@@ -48,15 +48,20 @@ function installClaudeSkill(scope, projectDir) {
   console.log(`  \u2713 delegate-work skill (${dest})`);
 }
 
-function registerClaude(launch, scope) {
+// `claude mcp` writes .mcp.json relative to its own cwd, so a project-scope install
+// must run from projectDir — otherwise it lands in whatever directory setup was
+// invoked from, and installClaudeSkill (which does honour projectDir) disagrees
+// with it.
+function registerClaude(launch, scope, projectDir) {
+  const opts = scope === "project" ? { cwd: projectDir } : {};
   try {
-    execSync(`claude mcp remove --scope ${scope} forge-delegate`, { stdio: "ignore" });
+    execSync(`claude mcp remove --scope ${scope} forge-delegate`, { ...opts, stdio: "ignore" });
   } catch {}
   try {
-    execSync(`claude mcp remove forge-delegate`, { stdio: "ignore" });
+    execSync(`claude mcp remove forge-delegate`, { ...opts, stdio: "ignore" });
   } catch {}
-  execSync(`claude mcp add --scope ${scope} forge-delegate -- ${launch}`, { stdio: "inherit" });
-  console.log(`  ✓ Claude Code (scope=${scope})`);
+  execSync(`claude mcp add --scope ${scope} forge-delegate -- ${launch}`, { ...opts, stdio: "inherit" });
+  console.log(`  ✓ Claude Code (scope=${scope}${scope === "project" ? `, ${projectDir}` : ""})`);
 }
 
 function codexConfigPath(scope, projectDir) {
@@ -139,7 +144,7 @@ async function setup() {
   for (const target of targets) {
     try {
       if (target === "claude") {
-        registerClaude(launch, scope);
+        registerClaude(launch, scope, projectDir);
         if (!flags["no-skill"]) installClaudeSkill(scope, projectDir);
       }
       else if (target === "codex") registerCodex(launchArr, scope, projectDir);

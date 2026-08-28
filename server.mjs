@@ -27,6 +27,33 @@ const RUNS_DIR = join(homedir(), ".forge-delegate", "runs");
 const here = dirname(fileURLToPath(import.meta.url));
 const VERSION = JSON.parse(readFileSync(join(here, "package.json"), "utf8")).version;
 
+// The server auto-updates (npx re-resolves latest on each spawn) but the installed
+// skill is a file on disk that only `setup` rewrites — so a published skill change
+// goes unnoticed. Compare the two and say so, rather than running stale in silence.
+function skillStatus() {
+  const src = join(here, "skills", "delegate-work", "SKILL.md");
+  if (!existsSync(src)) return null;
+  const dests = [
+    join(homedir(), ".claude", "skills", "delegate-work", "SKILL.md"),
+    join(process.cwd(), ".claude", "skills", "delegate-work", "SKILL.md"),
+  ];
+  const installed = dests.filter(existsSync);
+  if (!installed.length) return { state: "missing", detail: "not installed" };
+  const want = readFileSync(src, "utf8");
+  const stale = installed.filter((d) => readFileSync(d, "utf8") !== want);
+  return stale.length
+    ? { state: "stale", detail: `out of date: ${stale.join(", ")}` }
+    : { state: "ok", detail: "up to date" };
+}
+
+const SKILL_STATUS = skillStatus();
+if (SKILL_STATUS && SKILL_STATUS.state !== "ok") {
+  // stderr only — stdout is the JSON-RPC channel.
+  process.stderr.write(
+    `forge-delegate: delegate-work skill ${SKILL_STATUS.detail}. Run: npx -y forge-delegate setup\n`
+  );
+}
+
 const INSTRUCTIONS = `forge-delegate hands coding work to cheap external models running as full agents. They read the project and write the code in their own loop, so the work never passes through your context. Spend your context on judgment; delegate the typing.
 
 DELEGATE BY DEFAULT — do not hand-write these yourself:
@@ -244,7 +271,8 @@ server.tool(
     const { profiles, ...rest } = cfg;
     const lines = Object.entries(rest).map(([k, v]) => `  ${k}: ${v ?? "(unset)"}`);
     const prof = Object.entries(profiles).map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`).join("\n") || "  (none)";
-    return { content: [{ type: "text", text: `config: ${configPath()}\n${lines.join("\n")}\nprofiles:\n${prof}` }] };
+    const skill = SKILL_STATUS ? `\nskill (delegate-work): ${SKILL_STATUS.detail}${SKILL_STATUS.state === "ok" ? "" : " — run: npx -y forge-delegate setup"}` : "";
+    return { content: [{ type: "text", text: `config: ${configPath()}\n${lines.join("\n")}\nprofiles:\n${prof}${skill}` }] };
   }
 );
 
