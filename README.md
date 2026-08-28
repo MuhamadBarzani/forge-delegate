@@ -57,6 +57,15 @@ via MCP `instructions` — no memory-file (`CLAUDE.md`/`AGENTS.md`) editing need
 Then restart your agent and confirm the server is connected: `/mcp` in Claude Code,
 `codex mcp`, or `opencode`.
 
+### What you need
+
+- **Node.js ≥ 18** and **opencode** installed (the installer can fetch opencode for you).
+- **Free `opencode/*` models** (e.g. `opencode/mimo-v2.5-free`) need no auth — zero setup.
+- **Any other provider** (deepseek, openai, google, ollama, …) must be logged into **your**
+  opencode first — that's a step *you* do in your own opencode, not something forge-delegate
+  handles: `opencode auth login <provider>`. forge-delegate reuses your opencode's credentials
+  and never stores API keys. (Ollama needs no key, just the Ollama app running.)
+
 ### Scope
 
 | `--scope` | Claude Code | Codex | opencode |

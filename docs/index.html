@@ -119,6 +119,12 @@
         <code>opencode models</code> before picking and copy a model from <em>that</em> list —
         it's exactly what your opencode accepts today, so the install command will work.
       </p>
+      <p class="note">
+        Free <code>opencode/*</code> models need <em>no</em> auth — zero setup. For any other
+        provider (deepseek, openai, google, …), <strong>you</strong> must log it into your own
+        opencode first: <code>opencode auth login &lt;provider&gt;</code>. forge-delegate reuses
+        your opencode's credentials and never stores API keys.
+      </p>
     </div>
 
     <div class="field">
