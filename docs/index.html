@@ -26,17 +26,18 @@
   .card h2 { font-size: 15px; margin: 0 0 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
   .field { margin-bottom: 14px; }
   .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; }
-  input[type=text], input[type=url] {
+  input[type=text], input[type=url], select {
     width: 100%; padding: 8px 10px; background: #0d0f13; color: var(--text);
     border: 1px solid var(--border); border-radius: 6px; font: 13px/1.4 ui-monospace, Menlo, monospace;
   }
-  input:focus { outline: none; border-color: var(--accent); }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
   .chips { display: flex; gap: 8px; flex-wrap: wrap; }
   .chip {
     border: 1px solid var(--border); background: #0d0f13; color: var(--text);
     border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; user-select: none;
   }
   .chip.on { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
+  .check { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; font-size: 14px; cursor: pointer; }
   .row { display: flex; gap: 18px; flex-wrap: wrap; }
   .row .field { flex: 1; min-width: 200px; }
   .radio { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; font-size: 14px; cursor: pointer; }
@@ -58,6 +59,28 @@
   .foot { color: var(--muted); font-size: 12.5px; margin-top: 30px; text-align: center; }
   .foot a { color: var(--accent); }
   .note { color: var(--muted); font-size: 12.5px; }
+
+  /* model picker */
+  .picker { position: relative; }
+  .picker .status { font-size: 12px; color: var(--muted); margin-top: 6px; min-height: 16px; }
+  .picker .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+  .picker .filters select { width: auto; padding: 6px 8px; }
+  .picker .list {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
+    background: #0d0f13; border: 1px solid var(--accent-dim); border-radius: 8px;
+    max-height: 320px; overflow-y: auto; box-shadow: 0 12px 32px rgba(0,0,0,.5);
+  }
+  .picker .list .item {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 7px 12px; cursor: pointer; border-bottom: 1px solid var(--border);
+    font: 13px ui-monospace, Menlo, monospace;
+  }
+  .picker .list .item:hover { background: var(--accent-dim); color: #fff; }
+  .picker .list .item .price { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+  .picker .list .item:hover .price { color: #cfe0ff; }
+  .picker .list .item .free { color: var(--ok); font-size: 11px; border: 1px solid var(--ok); border-radius: 4px; padding: 0 5px; }
+  .picker .list .empty { padding: 12px; color: var(--muted); font-size: 13px; }
+  .picker .list .count { padding: 6px 12px; color: var(--muted); font-size: 11.5px; position: sticky; top: 0; background: #0d0f13; }
 </style>
 </head>
 <body>
@@ -76,15 +99,18 @@
       <input type="url" id="url" value="https://raw.githubusercontent.com/MuhamadBarzani/forge-delegate/main/install.sh">
     </div>
 
-    <div class="field">
-      <label for="model">Default model (provider/model) — optional</label>
-      <input type="text" id="model" placeholder="e.g. opencode/deepseek-v4-flash-free" list="models">
-      <datalist id="models">
-        <option value="opencode/deepseek-v4-flash-free">
-        <option value="opencode/north-mini-code-free">
-        <option value="opencode/mimo-v2.5-free">
-        <option value="deepseek/deepseek-v4-flash">
-      </datalist>
+    <div class="field picker">
+      <label for="model">Default model (provider/model)</label>
+      <input type="text" id="model" placeholder="type to search, e.g. opencode/deepseek-v4-flash-free" autocomplete="off">
+      <div class="filters">
+        <select id="provider" title="Provider">
+          <option value="">all providers</option>
+        </select>
+        <label class="check"><input type="checkbox" id="freeOnly"> free only</label>
+        <label class="check"><input type="checkbox" id="cheapOnly"> cheap (&lt; $0.50 in)</label>
+      </div>
+      <div class="status" id="modelStatus">Loading model catalog…</div>
+      <div class="list hidden" id="modelList"></div>
     </div>
 
     <div class="field">
@@ -128,8 +154,19 @@
 
 <script>
 (function () {
+  var CATALOG_URL = "https://models.dev/api.json";
+  var CHEAP_MAX = 0.5;
+  var CACHE_KEY = "fd-models-cache-v1";
+  var CACHE_TTL = 7 * 24 * 3600 * 1000;
+  var COMMON = ["opencode", "deepseek", "openai", "google", "anthropic", "ollama", "mistral", "meta", "qwen", "xai", "groq", "moonshotai", "zhipuai", "nvidia", "amazon"];
+
   var urlEl = document.getElementById("url");
   var modelEl = document.getElementById("model");
+  var providerEl = document.getElementById("provider");
+  var freeEl = document.getElementById("freeOnly");
+  var cheapEl = document.getElementById("cheapOnly");
+  var statusEl = document.getElementById("modelStatus");
+  var listEl = document.getElementById("modelList");
   var targetEls = document.querySelectorAll("#targets .chip");
   var scopeEls = document.querySelectorAll('input[name="scope"]');
   var projectDirField = document.getElementById("projectDirField");
@@ -137,6 +174,117 @@
   var cmdEl = document.getElementById("cmd");
   var promptEl = document.getElementById("prompt");
 
+  var models = [];   // flat: {id, provider, input, free}
+
+  // ---- model catalog ------------------------------------------------------
+  function loadCatalog() {
+    try {
+      var cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+      if (cached && Date.now() - cached.ts < CACHE_TTL && cached.models.length) {
+        setCatalog(cached.models, "Loaded " + cached.models.length + " models from cache");
+        return;
+      }
+    } catch (e) {}
+    fetch(CATALOG_URL)
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (data) {
+        var flat = [];
+        Object.keys(data).forEach(function (pid) {
+          var p = data[pid];
+          Object.keys(p.models || {}).forEach(function (mid) {
+            var m = p.models[mid];
+            var cost = m.cost || {};
+            flat.push({
+              id: pid + "/" + mid,
+              provider: pid,
+              input: cost.input || 0,
+              free: (cost.input || 0) === 0 && (cost.output || 0) === 0
+            });
+          });
+        });
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), models: flat })); } catch (e) {}
+        setCatalog(flat, "Loaded " + flat.length + " models from models.dev (live)");
+      })
+      .catch(function (e) {
+        statusEl.textContent = "Couldn't load catalog (" + e.message + ") — type a model manually.";
+      });
+  }
+
+  function setCatalog(flat, msg) {
+    models = flat;
+    statusEl.textContent = msg;
+    var known = {};
+    COMMON.concat(models.map(function (m) { return m.provider; }))
+      .forEach(function (p) { known[p] = true; });
+    Object.keys(known).sort().forEach(function (pid) {
+      var opt = document.createElement("option");
+      opt.value = pid; opt.textContent = pid;
+      providerEl.appendChild(opt);
+    });
+    renderList();
+  }
+
+  function matches(m) {
+    var q = modelEl.value.trim().toLowerCase();
+    var prov = providerEl.value;
+    if (prov && m.provider !== prov) return false;
+    if (freeEl.checked && !m.free) return false;
+    if (cheapEl.checked && m.input >= CHEAP_MAX) return false;
+    if (q) {
+      var i = m.id.toLowerCase();
+      var p = i.indexOf("/" + q);
+      if (i.indexOf(q) === -1 && p === -1) return false;
+    }
+    return true;
+  }
+
+  function renderList() {
+    if (!models.length) return;
+    var hits = models.filter(matches)
+      .sort(function (a, b) {
+        if (a.free !== b.free) return a.free ? -1 : 1;
+        if (a.input !== b.input) return a.input - b.input;
+        return a.id.localeCompare(b.id);
+      })
+      .slice(0, 60);
+    listEl.innerHTML = "";
+    var count = document.createElement("div");
+    count.className = "count";
+    count.textContent = hits.length + (hits.length === 60 ? "+" : "") + " of " + models.length + " models";
+    listEl.appendChild(count);
+    if (!hits.length) {
+      var e = document.createElement("div");
+      e.className = "empty";
+      e.textContent = "no matches — type a model id manually";
+      listEl.appendChild(e);
+    }
+    hits.forEach(function (m) {
+      var row = document.createElement("div");
+      row.className = "item";
+      var left = document.createElement("span");
+      left.textContent = m.id;
+      if (m.free) {
+        var b = document.createElement("span");
+        b.className = "free"; b.textContent = "free";
+        left.appendChild(document.createTextNode(" ")); left.appendChild(b);
+      }
+      var price = document.createElement("span");
+      price.className = "price";
+      price.textContent = m.free ? "$0" : "$" + m.input.toFixed(2) + "/M in";
+      row.appendChild(left); row.appendChild(price);
+      row.addEventListener("click", function () {
+        modelEl.value = m.id;
+        hideList();
+        render();
+      });
+      listEl.appendChild(row);
+    });
+  }
+
+  function showList() { if (models.length) { listEl.classList.remove("hidden"); renderList(); } }
+  function hideList() { listEl.classList.add("hidden"); }
+
+  // ---- command / prompt ---------------------------------------------------
   function getTargets() {
     var on = [];
     targetEls.forEach(function (c) { if (c.classList.contains("on")) on.push(c.dataset.target); });
@@ -191,6 +339,7 @@
     promptEl.textContent = prompt();
   }
 
+  // ---- copy ---------------------------------------------------------------
   function copy(el, btn, doneText) {
     var text = el.textContent;
     function done() {
@@ -210,6 +359,7 @@
     document.body.removeChild(ta);
   }
 
+  // ---- events -------------------------------------------------------------
   targetEls.forEach(function (c) {
     c.addEventListener("click", function () {
       c.classList.toggle("on");
@@ -223,12 +373,22 @@
       render();
     });
   });
-  [urlEl, modelEl, projectDirEl].forEach(function (el) {
-    el.addEventListener("input", render);
+  [urlEl, projectDirEl].forEach(function (el) { el.addEventListener("input", render); });
+
+  modelEl.addEventListener("input", function () { render(); renderList(); });
+  modelEl.addEventListener("focus", showList);
+  modelEl.addEventListener("keydown", function (ev) { if (ev.key === "Escape") hideList(); });
+  providerEl.addEventListener("change", renderList);
+  freeEl.addEventListener("change", renderList);
+  cheapEl.addEventListener("change", renderList);
+  document.addEventListener("click", function (ev) {
+    if (!ev.target.closest(".picker")) hideList();
   });
+
   document.getElementById("copyCmd").addEventListener("click", function (e) { copy(cmdEl, e.currentTarget, "Copied!"); });
   document.getElementById("copyPrompt").addEventListener("click", function (e) { copy(promptEl, e.currentTarget, "Copied!"); });
 
+  loadCatalog();
   render();
 })();
 </script>

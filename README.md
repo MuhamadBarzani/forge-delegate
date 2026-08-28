@@ -20,7 +20,9 @@ tests, lint/type fixes) and reports back.
 ## Quick start
 
 **Web configurator** — pick model/targets/scope and get a ready-to-paste command
-(https://muhamadbarzani.github.io/forge-delegate/).
+(https://muhamadbarzani.github.io/forge-delegate/). The model picker is backed by the live
+[models.dev](https://models.dev) catalog — searchable, with free/cheap filters and real prices,
+so you're picking from actual available models rather than guessing.
 
 **One-line installer** (host the repo or use a checkout):
 
