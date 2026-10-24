@@ -4,7 +4,7 @@
   "description": "MCP server that relays coding work to other AI models (DeepSeek, Gemini, OpenAI, Ollama) so Claude Code saves tokens",
   "type": "module",
   "bin": {
-    "forge-delegate": "./cli.mjs"
+    "forge-delegate": "cli.mjs"
   },
   "scripts": {
     "setup": "node cli.mjs setup",
@@ -20,7 +20,16 @@
     "docs/",
     "README.md"
   ],
-  "keywords": ["mcp", "claude", "claude-code", "ai", "deepseek", "gemini", "ollama", "delegation"],
+  "keywords": [
+    "mcp",
+    "claude",
+    "claude-code",
+    "ai",
+    "deepseek",
+    "gemini",
+    "ollama",
+    "delegation"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=18"
