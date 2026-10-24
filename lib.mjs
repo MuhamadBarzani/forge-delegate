@@ -1,9 +1,30 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
 export const OPENCODE_TIMEOUT = Number(process.env.FORGE_OPENCODE_TIMEOUT ?? 900_000);
+
+// forge-delegate targets opencode v2+. v2 removed the `--dir` and `--variant`
+// flags from `run` — and treats an unknown flag as a help request, exiting 0 —
+// so an older binary fails silently. Detecting the version is the only way to
+// tell the user instead of returning empty results.
+export function parseOpencodeVersion(text) {
+  const m = String(text ?? "").match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return null;
+  return { major: +m[1], minor: +m[2], patch: +m[3], raw: m[0] };
+}
+
+export function detectOpencode() {
+  return new Promise((resolve) => {
+    execFile("opencode", ["--version"], { timeout: 10_000 }, (err, stdout, stderr) => {
+      if (err) return resolve({ found: false, version: null, supported: false });
+      const version = parseOpencodeVersion(`${stdout}\n${stderr}`);
+      resolve({ found: true, version, supported: Boolean(version) && version.major >= 2 });
+    });
+  });
+}
+
 const CONFIG_DIR = join(homedir(), ".forge-delegate");
 const AUTH_PATH = join(homedir(), ".local/share/opencode/auth.json");
 const OPENCODE_CONFIG_PATH = join(homedir(), ".config/opencode/opencode.json");

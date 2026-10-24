@@ -56,7 +56,10 @@ Then restart your agent and confirm the server is connected: `/mcp` in Claude Co
 
 ### What you need
 
-- **Node.js ≥ 18** and **opencode** installed (the installer can fetch opencode for you).
+- **Node.js ≥ 18** and **opencode v2 or newer** installed (the installer can fetch opencode for you).
+  v2 removed the CLI flags older versions relied on for working directories and variants, and an
+  unknown flag makes `opencode run` print help and exit successfully — so a pre-v2 binary fails
+  silently. The server checks at startup and warns instead.
 - **Free `opencode/*` models** (e.g. `opencode/deepseek-v4.1-flash-free`) need no auth — zero setup.
 - **Any other provider** (deepseek, openai, google, ollama, …) must be logged into **your**
   opencode first — that's a step *you* do in your own opencode, not something forge-delegate

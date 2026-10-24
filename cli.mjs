@@ -5,7 +5,7 @@ import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
-import { loadConfig, saveConfig, configPath } from "./lib.mjs";
+import { loadConfig, saveConfig, configPath, detectOpencode } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -121,6 +121,18 @@ async function setup() {
   console.log("\n=== forge-delegate setup ===\n");
   if (interactive) console.log("Press Enter to accept the suggested [default], or type a value.\n");
 
+  const oc = await detectOpencode();
+  if (!oc.found) {
+    console.log("  ✗ opencode not found on PATH — install it from https://opencode.ai, then re-run setup.\n");
+  } else if (!oc.supported) {
+    console.log(
+      `  ✗ opencode ${oc.version?.raw ?? "(unknown version)"} is too old — forge-delegate requires opencode 2 or newer.\n` +
+        "    Run: opencode upgrade\n"
+    );
+  } else {
+    console.log(`  ✓ opencode ${oc.version.raw}\n`);
+  }
+
   if (!model) {
     const def = current.defaultModel ?? "opencode/deepseek-v4.1-flash-free";
     model = interactive ? ((await ask(`Default model [${def}]: `)) ?? "").trim() || def : def;
@@ -199,6 +211,11 @@ function configCmd(argv) {
 }
 
 async function status() {
+  const oc = await detectOpencode();
+  console.log(
+    `\nopencode: ${oc.found ? (oc.version?.raw ?? "unknown version") : "not found on PATH"}` +
+      `${oc.found && !oc.supported ? "  (too old — requires v2 or newer)" : ""}`
+  );
   let providers = [];
   try {
     const authPath = join(homedir(), ".local/share/opencode/auth.json");

@@ -14,6 +14,7 @@ import {
   opencodeArgs,
   parseEvents,
   pickVariant,
+  detectOpencode,
   listAuthDirectProviders,
   listLocalProviders,
   loadConfig,
@@ -53,6 +54,24 @@ if (SKILL_STATUS && SKILL_STATUS.state !== "ok") {
     `forge-delegate: delegate-work skill ${SKILL_STATUS.detail}. Run: npx -y forge-delegate setup\n`
   );
 }
+
+// Same channel rule. Non-blocking so a slow or missing `opencode` can never delay
+// the MCP handshake; if the binary is absent or pre-v2 the user hears about it
+// instead of getting silent empty delegations later.
+detectOpencode()
+  .then((oc) => {
+    if (!oc.found) {
+      process.stderr.write(
+        "forge-delegate: opencode not found on PATH — delegations will fail. Install: https://opencode.ai\n"
+      );
+    } else if (!oc.supported) {
+      process.stderr.write(
+        `forge-delegate: opencode ${oc.version?.raw ?? "(unknown version)"} is too old — requires opencode 2 or newer ` +
+          `(v2 removed the CLI flags forge-delegate uses). Run: opencode upgrade\n`
+      );
+    }
+  })
+  .catch(() => {});
 
 const INSTRUCTIONS = `forge-delegate hands coding work to cheap external models running as full agents. They read the project and write the code in their own loop, so the work never passes through your context. Spend your context on judgment; delegate the typing.
 
