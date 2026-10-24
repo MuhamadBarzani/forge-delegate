@@ -111,8 +111,11 @@ async function startBackgroundJob(model, task, opts = {}) {
   const logPath = join(RUNS_DIR, `${id}.log`);
   const out = openSync(logPath, "w");
   const cwd = opts.directory ?? process.cwd();
+  // opencode v2 resolves the project from PWD, not the child's cwd (see lib.mjs).
+  const env = opts.directory ? { ...process.env, PWD: opts.directory } : process.env;
   const child = spawn("opencode", opencodeArgs(model, task, { ...opts, variant }), {
     cwd,
+    env,
     detached: true,
     stdio: ["ignore", out, out],
   });
@@ -147,7 +150,7 @@ server.tool(
       if (local.ollama.length) lines.push(`  ollama: ${local.ollama.slice(0, 12).join(", ")}`);
       else lines.push("  ollama: not running");
       for (const [name, p] of Object.entries(local.config))
-        lines.push(`  ${name} (opencode.json): ${p.models.join(", ") || "(models defined ad hoc)"}`);
+        lines.push(`  ${name} (opencode.json): ${Object.keys(p.models).join(", ") || "(models defined ad hoc)"}`);
 
       lines.push("\n== direct via opencode logins (ask_model, provider/model) ==");
       try {
@@ -192,7 +195,7 @@ server.tool(
   "delegate",
   "USE THIS INSTEAD OF WRITING THE CODE YOURSELF when the task is: tests for code that already exists; a mechanical refactor (rename, signature change, import rewrite, API migration); fixing lint/type/build errors; boilerplate or scaffolding (CRUD endpoints, config, schemas, adapters, fixtures); a port between languages or frameworks; the same edit repeated across 3 or more files; reading a large file/directory to answer one narrow question; or the survey half of an audit (delegate the gathering, keep the verdict — demand a file path behind every claim). Hands the task to another AI model running as a full agent via local opencode: it reads your project, explores, and writes concrete code in its own tool loop — none of which enters your context. Keep architecture, unknown-root-cause debugging, and security-sensitive code for yourself, and always review what comes back. Runs INLINE by default (result returned when done; Claude Code auto-backgrounds calls past 2 minutes). Pass background:true to run detached and get a job id instantly, then poll check_delegation — use that for parallel fan-out or hosts that block on long calls. Pass continue_session (returned by a previous delegation) to keep the same agent session instead of re-exploring. Never paste file contents into task: name the paths and let the agent read them. model/directory/agent/autoApprove default from config — omit them.",
   {
-    model: z.string().optional().describe("provider/model format, e.g. opencode/mimo-v2.5-free (defaults to config defaultModel)"),
+    model: z.string().optional().describe("provider/model format, e.g. opencode/deepseek-v4.1-flash-free (defaults to config defaultModel)"),
     task: z.string(),
     files: z.array(z.string()).optional().describe("specific files to attach (inline mode)"),
     background: z.boolean().optional().describe("run detached and return a job id (default false)"),

@@ -9,7 +9,6 @@ const AUTH_PATH = join(homedir(), ".local/share/opencode/auth.json");
 const OPENCODE_CONFIG_PATH = join(homedir(), ".config/opencode/opencode.json");
 const CATALOG_CACHE = join(CONFIG_DIR, "models-dev.json");
 const CATALOG_TTL = 24 * 3600 * 1000;
-const VARIANTS_CACHE = join(CONFIG_DIR, "variants.json");
 const OLLAMA_BASE = process.env.OLLAMA_URL ?? "http://localhost:11434";
 
 function loadOpencodeAuth() {
@@ -91,81 +90,41 @@ export function resolveConfig(overrides = {}) {
   };
 }
 
-export function opencodeArgs(model, prompt, { files, sessionId, variant, directory, agent, autoApprove } = {}) {
+// opencode v2 selects the run directory via the child's cwd (there is no `--dir`)
+// and the reasoning variant inline as `provider/model#variant` (there is no
+// `--variant`). Passing the old flags makes `run` print its help and exit 0 —
+// a silent no-op, so do not reintroduce them.
+export function opencodeArgs(model, prompt, { files, sessionId, variant, agent, autoApprove } = {}) {
   const args = ["run", "--format", "json"];
   if (autoApprove) args.push("--auto");
   if (sessionId) args.push("-s", sessionId);
-  if (directory) args.push("--dir", directory);
   if (agent) args.push("--agent", agent);
-  args.push("-m", model);
-  if (variant) args.push("--variant", variant);
+  const ref = variant && !model.includes("#") ? `${model}#${variant}` : model;
+  args.push("-m", ref);
   for (const f of files ?? []) args.push("-f", f);
   args.push(prompt);
   return args;
 }
 
+// Variant (reasoning effort) names come from the model catalog's
+// `reasoning_options`. opencode v2 no longer exposes them over the server API.
 export async function pickVariant(model) {
-  const [provider, ...rest] = model.split("/");
-  const id = rest.join("/");
-  if (!provider || !id || model.startsWith("ollama:")) return undefined;
-  let variants = {};
+  if (model.includes("#") || model.startsWith("ollama:")) return undefined;
+  const slash = model.indexOf("/");
+  if (slash <= 0) return undefined;
+  const provider = model.slice(0, slash);
+  const id = model.slice(slash + 1);
+  let catalog;
   try {
-    variants = await loadVariantMap();
+    catalog = await loadCatalog();
   } catch {
     return undefined;
   }
-  const list = variants[`${provider}/${id}`];
+  const options = catalog?.[provider]?.models?.[id]?.reasoning_options;
+  const effort = Array.isArray(options) ? options.find((o) => o?.type === "effort") : null;
+  const list = effort?.values;
   if (!Array.isArray(list) || list.length === 0) return undefined;
   return list.length === 1 ? list[0] : list[list.length - 2];
-}
-
-// Variant names per provider/model, discovered from `GET /config/providers`
-// on a short-lived local opencode server. Cached on disk for 24h.
-async function loadVariantMap() {
-  try {
-    const cached = JSON.parse(readFileSync(VARIANTS_CACHE, "utf8"));
-    if (Date.now() - cached.fetchedAt < CATALOG_TTL && cached.data) return cached.data;
-  } catch {}
-  const child = spawn("opencode", ["serve", "--port", "0"], { stdio: ["ignore", "pipe", "pipe"] });
-  try {
-    const baseUrl = await new Promise((resolvePromise, rejectPromise) => {
-      let out = "";
-      const timer = setTimeout(() => rejectPromise(new Error("opencode serve timed out")), 20_000);
-      child.stdout.on("data", (d) => {
-        out += d;
-        const m = out.match(/listening on (https?:\/\/\S+)/);
-        if (m) {
-          clearTimeout(timer);
-          resolvePromise(m[1]);
-        }
-      });
-      child.on("error", (e) => {
-        clearTimeout(timer);
-        rejectPromise(e);
-      });
-      child.on("exit", () => {
-        clearTimeout(timer);
-        rejectPromise(new Error("opencode serve exited before listening"));
-      });
-    });
-    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/config/providers`, { signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) throw new Error(`config/providers ${res.status}`);
-    const body = await res.json();
-    const providers = body.providers ?? body;
-    const map = {};
-    for (const p of Array.isArray(providers) ? providers : Object.values(providers)) {
-      for (const [mid, m] of Object.entries(p.models ?? {})) {
-        if (m?.variants) map[`${p.id}/${mid}`] = Object.keys(m.variants);
-      }
-    }
-    try {
-      mkdirSync(CONFIG_DIR, { recursive: true });
-      writeFileSync(VARIANTS_CACHE, JSON.stringify({ fetchedAt: Date.now(), data: map }));
-    } catch {}
-    return map;
-  } finally {
-    child.kill("SIGKILL");
-  }
 }
 
 export function parseEvents(stdout) {
@@ -190,9 +149,14 @@ export async function opencodeRun(model, prompt, opts = {}) {
   const variant = opts.variant ?? (await pickVariant(model));
   const timeoutMs = opts.timeoutMs ?? OPENCODE_TIMEOUT;
   const cwd = opts.directory ?? process.cwd();
+  // opencode v2 picks the project from the PWD environment variable, not from the
+  // child's cwd — so a delegation with `directory` set would otherwise run against
+  // the server's directory while looking like it honoured the option.
+  const env = opts.directory ? { ...process.env, PWD: opts.directory } : process.env;
   const stdout = await new Promise((resolvePromise, rejectPromise) => {
     const child = spawn("opencode", opencodeArgs(model, prompt, { ...opts, variant }), {
       cwd,
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let out = "";
@@ -303,8 +267,17 @@ export async function runAuthDirect(model, prompt) {
   const prov = model.slice(0, slashIdx);
   const id = model.slice(slashIdx + 1);
   const auth = loadOpencodeAuth();
-  if (!auth[prov]?.key)
+  if (!auth[prov]?.key) {
+    // opencode's own free tier rejects direct HTTP ("can only be used from within
+    // OpenCode"), so these models are reachable only through the CLI.
+    if (prov === "opencode" || prov === "opencode-go")
+      throw new Error(
+        `'${model}' is hosted by opencode, whose free tier only works from inside opencode — ` +
+          `ask_model cannot call it directly. Use the delegate tool instead, or prefix the model ` +
+          `with 'opencode:' to route it through the CLI.`
+      );
     throw new Error(`no opencode login for '${prov}' — run: opencode auth login ${prov}`);
+  }
   const catalog = await loadCatalog();
   const info = catalog[prov];
   if (!info?.api || info.npm !== "@ai-sdk/openai-compatible")

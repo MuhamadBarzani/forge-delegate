@@ -27,7 +27,7 @@ so you're picking from actual available models rather than guessing.
 **npx (recommended — works everywhere, no bash needed):**
 
 ```bash
-npx -y forge-delegate setup --model "opencode/mimo-v2.5-free" --targets "claude,codex,opencode"
+npx -y forge-delegate setup --model "opencode/deepseek-v4.1-flash-free" --targets "claude,codex,opencode"
 ```
 
 That's it — npx pulls the latest package and `setup` registers the MCP server with the agents
@@ -57,7 +57,7 @@ Then restart your agent and confirm the server is connected: `/mcp` in Claude Co
 ### What you need
 
 - **Node.js ≥ 18** and **opencode** installed (the installer can fetch opencode for you).
-- **Free `opencode/*` models** (e.g. `opencode/mimo-v2.5-free`) need no auth — zero setup.
+- **Free `opencode/*` models** (e.g. `opencode/deepseek-v4.1-flash-free`) need no auth — zero setup.
 - **Any other provider** (deepseek, openai, google, ollama, …) must be logged into **your**
   opencode first — that's a step *you* do in your own opencode, not something forge-delegate
   handles: `opencode auth login <provider>`. forge-delegate reuses your opencode's credentials
@@ -80,10 +80,10 @@ Use the `npx` route — no bash needed (works in cmd/PowerShell). Drop `codex` f
 opencode ships free no-auth models under `opencode/`:
 
 ```bash
-npx -y forge-delegate setup --model "opencode/mimo-v2.5-free" --targets "claude,codex"
+npx -y forge-delegate setup --model "opencode/deepseek-v4.1-flash-free" --targets "claude,codex"
 ```
 
-Other free options: `opencode/hy3-free`, `opencode/nemotron-3.5-lightning-free`. Free tiers are
+Other free options: `opencode/mimo-v2.6-flash-free`, `opencode/nemotron-3.5-lightning-free`. Free tiers are
 rate-limited; switch anytime with `forge-delegate config set --model <m>`.
 
 ## Tools
@@ -152,7 +152,7 @@ Every delegation tool also accepts per-call `model`, `directory`, `agent`, `auto
 
 ## Models
 
-- **opencode provider** — free no-auth models (`opencode/mimo-v2.5-free`, ...) plus
+- **opencode provider** — free no-auth models (`opencode/deepseek-v4.1-flash-free`, ...) plus
   anything you have logged in via `opencode auth login <provider>`.
 - **Direct API from opencode logins** — `provider/model` for OpenAI-compatible providers.
 - **Custom providers** — OpenAI-compatible providers defined in `opencode.json`

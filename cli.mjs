@@ -122,7 +122,7 @@ async function setup() {
   if (interactive) console.log("Press Enter to accept the suggested [default], or type a value.\n");
 
   if (!model) {
-    const def = current.defaultModel ?? "opencode/mimo-v2.5-free";
+    const def = current.defaultModel ?? "opencode/deepseek-v4.1-flash-free";
     model = interactive ? ((await ask(`Default model [${def}]: `)) ?? "").trim() || def : def;
   }
   if (!targets) targets = "claude,codex,opencode";
