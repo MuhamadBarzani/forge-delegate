@@ -1,6 +1,6 @@
 {
   "name": "forge-delegate",
-  "version": "1.0.10",
+  "version": "1.1.0",
   "description": "MCP server that relays coding work to other AI models (DeepSeek, Gemini, OpenAI, Ollama) so Claude Code saves tokens",
   "type": "module",
   "bin": {
@@ -9,9 +9,10 @@
   "scripts": {
     "setup": "node cli.mjs setup",
     "start": "node cli.mjs serve",
-    "prepublishOnly": "node --check cli.mjs && node --check server.mjs && node --check lib.mjs && node test-handshake.mjs"
+    "prepublishOnly": "node --check launcher.mjs && node --check cli.mjs && node --check server.mjs && node --check lib.mjs && node test-handshake.mjs"
   },
   "files": [
+    "launcher.mjs",
     "cli.mjs",
     "server.mjs",
     "lib.mjs",

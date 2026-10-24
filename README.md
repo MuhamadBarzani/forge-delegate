@@ -30,9 +30,9 @@ so you're picking from actual available models rather than guessing.
 npx -y forge-delegate setup --model "opencode/deepseek-v4.1-flash-free" --targets "claude,codex,opencode"
 ```
 
-That's it — npx pulls the latest package and `setup` registers the MCP server with the agents
-you chose and sets your default model. Works on Windows (cmd/PowerShell), macOS, and Linux —
-no bash needed, and always runs the latest version.
+That's it — npx bootstraps the package, and `setup` registers the MCP server with the agents
+you chose, sets your default model, and installs a small launcher that keeps the server up to
+date. Works on Windows (cmd/PowerShell), macOS, and Linux — no bash needed.
 
 Run `setup` **without flags** and it walks you through the choices interactively (defaults in
 `[brackets]`, Enter accepts); pass any of the flags to skip that prompt. In an automated/non-terminal
@@ -47,6 +47,7 @@ run it just uses sensible defaults.
 `setup` will:
 1. Register the MCP server with each agent you chose (`--targets claude,codex,opencode`).
 2. Set your default model (`--model`) so calls can omit `model`.
+3. Install the auto-update launcher (published installs; skipped for a git checkout).
 
 Routing and cost-policy guidance is injected by the MCP server itself into the agent's context
 via MCP `instructions` — no memory-file (`CLAUDE.md`/`AGENTS.md`) editing needed.
@@ -177,25 +178,35 @@ forge-delegate --version  Print the installed version
 forge-delegate setup      Register with Claude Code / Codex / opencode
 forge-delegate serve      Start the MCP server (used internally)
 forge-delegate config     get | set | path
-forge-delegate status     Show version, update status, opencode logins, usage
+forge-delegate status     Show version, update mode, opencode logins, usage
 forge-delegate stats      Show detailed usage statistics
 ```
 
-`status` also asks npm for the newest release (cached for 24 hours in
-`~/.forge-delegate/update-check.json`) and reports it when a newer version exists. Disable the
-check with `FORGE_NO_UPDATE_CHECK=1`. `get_delegate_config` returns the same version and
-`updateAvailable` fields, so an agent can answer "is this up to date?" without a CLI call.
+`setup` on a published install writes `~/.forge-delegate/launcher.mjs` and registers that path
+instead of `npx`. The launcher keeps a private install under `~/.forge-delegate/pkg`, asks npm
+for the newest release at most every 6 hours, and installs newer **same-major** versions
+automatically. Installs use `npm install --ignore-scripts`, go through a staging directory, and
+fall back to the last good version if anything fails. A new version lands on the next agent
+start; the download itself happens in the background so startup is never delayed.
 
-Updating an npx install is not automatic: npx keeps using its cached copy. Clear it with
-`rm -rf ~/.npm/_npx` and restart your agent, or install globally with `npm i -g forge-delegate`.
+Disable automatic updates with `FORGE_AUTO_UPDATE=0`. A major release (`2.0.0`) is never
+installed automatically — re-run `npx -y forge-delegate setup` to take it deliberately.
+
+The launcher is also the CLI entry point: `node ~/.forge-delegate/launcher.mjs status` reports
+the running version and update mode, and `--version` prints the version.
+
+npx installs configured by hand are not covered by the launcher: npx keeps its cached copy
+forever, so clear it with `rm -rf ~/.npm/_npx` and restart. Running
+`npx -y forge-delegate@latest setup` migrates an npx install to the launcher; `@latest` gets its
+own npx cache slot, and if it still starts an old version, clear the cache first.
 
 ## Publishing (npm)
 
 The primary install is `npx -y forge-delegate setup`, so the package must be on npm. Checklist:
 
 1. `npm run prepublishOnly` — syntax-checks all entry files (runs automatically on publish).
-2. `npm pack --dry-run` — confirm the tarball contains only `cli.mjs`, `server.mjs`, `lib.mjs`,
-   `install.sh`, `docs/`, `README.md` (via the `files` field), not `node_modules`.
+2. `npm pack --dry-run` — confirm the tarball contains only `launcher.mjs`, `cli.mjs`, `server.mjs`,
+   `lib.mjs`, `install.sh`, `docs/`, `skills/`, `README.md` (via the `files` field), not `node_modules`.
 3. Bump `version` in `package.json` (and the root `version` in `package-lock.json`).
 4. `npm login && npm publish` — the `bin` field makes `npx forge-delegate …` work.
 

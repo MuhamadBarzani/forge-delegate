@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline/promises";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
-import { loadConfig, saveConfig, configPath, detectOpencode, loadOpencodeAuth, checkForUpdate, VERSION } from "./lib.mjs";
+import { execSync, execFileSync } from "node:child_process";
+import { loadConfig, saveConfig, configPath, detectOpencode, loadOpencodeAuth, compareVersions, VERSION } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const herePosix = here.replace(/\\/g, "/");
+const ROOT = join(homedir(), ".forge-delegate");
+const LAUNCHER = join(ROOT, "launcher.mjs");
 
 function parseArgs(argv) {
   const args = {};
@@ -25,14 +28,60 @@ function parseArgs(argv) {
   return args;
 }
 
-function launchCommand() {
-  const isPublished = here.includes(join("node_modules", "forge-delegate")) || here.includes("/.npm/_npx/");
-  return isPublished ? "npx -y forge-delegate serve" : `node ${join(here, "cli.mjs")} serve`;
+function isPublishedInstall() {
+  return herePosix.includes("node_modules/forge-delegate") || herePosix.includes("/.npm/_npx/");
 }
 
-function launchArray() {
-  const isPublished = here.includes(join("node_modules", "forge-delegate")) || here.includes("/.npm/_npx/");
-  return isPublished ? ["npx", "-y", "forge-delegate", "serve"] : [process.execPath, join(here, "cli.mjs"), "serve"];
+// How this copy was installed matters to the user: only the launcher path can
+// update itself.
+function installKind() {
+  if (herePosix.includes("/.forge-delegate/pkg/")) return "launcher";
+  if (herePosix.includes("/.npm/_npx/") || herePosix.includes("node_modules/forge-delegate")) return "package";
+  return "checkout";
+}
+
+function readLauncherState() {
+  try {
+    return JSON.parse(readFileSync(join(ROOT, "launcher-state.json"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+// Copy the launcher out of the package to a path that never changes, then
+// pre-install this version so the first client launch is fast. A failure here
+// is not fatal: the launcher installs on demand.
+function ensureLauncher() {
+  const src = join(here, "launcher.mjs");
+  if (!existsSync(src)) return null;
+  try {
+    mkdirSync(ROOT, { recursive: true });
+    const want = readFileSync(src, "utf8");
+    let have = null;
+    try {
+      have = readFileSync(LAUNCHER, "utf8");
+    } catch {}
+    if (have !== want) writeFileSync(LAUNCHER, want);
+  } catch {
+    return null;
+  }
+  try {
+    execFileSync(process.execPath, [LAUNCHER, "--install-only", VERSION], {
+      stdio: "ignore",
+      timeout: 180_000,
+    });
+  } catch {}
+  return LAUNCHER;
+}
+
+function launchForThisInstall() {
+  if (!isPublishedInstall()) {
+    const cli = join(here, "cli.mjs");
+    return { command: `node "${cli}"`, array: ["node", cli, "serve"] };
+  }
+  const launcher = ensureLauncher();
+  if (launcher) return { command: `node "${launcher}"`, array: ["node", launcher] };
+  return { command: "npx -y forge-delegate serve", array: ["npx", "-y", "forge-delegate", "serve"] };
 }
 
 // The MCP server's `instructions` are injected once at session start and decay as the
@@ -143,8 +192,12 @@ async function setup() {
   projectDir = projectDir ?? process.cwd();
   targets = targets.split(",").map((s) => s.trim().toLowerCase());
 
-  const launch = launchCommand();
-  const launchArr = launchArray();
+  const { command: launch, array: launchArr } = launchForThisInstall();
+  if (launch.includes("launcher.mjs")) console.log(`  ✓ automatic updates (launcher: ${LAUNCHER})`);
+  // 1.0.x wrote this cache; the launcher keeps its own state elsewhere.
+  try {
+    rmSync(join(ROOT, "update-check.json"), { force: true });
+  } catch {}
 
   // 1. Set the default model first so it's saved even if registration hits an issue
   if (model && model !== current.defaultModel) {
@@ -210,14 +263,30 @@ function configCmd(argv) {
 }
 
 async function status() {
-  const update = await checkForUpdate();
   const oc = await detectOpencode();
+  const kind = installKind();
   let versionNote;
-  if (update.disabled) versionNote = "  (update check disabled)";
-  else if (update.updateAvailable) versionNote = `  \u2192 ${update.latest} available`;
-  else if (update.error && !update.latest) versionNote = "  (update check unavailable)";
-  else if (update.error) versionNote = `  (latest known: ${update.latest}; check failed)`;
-  else versionNote = "  (up to date)";
+  if (kind === "launcher") {
+    const state = readLauncherState();
+    versionNote = state?.autoUpdate === false ? "  (auto-update off)" : "  (auto-update on)";
+    if (state?.autoUpdate !== false) {
+      try {
+        const latest = JSON.parse(readFileSync(join(ROOT, "latest.json"), "utf8"));
+        if (latest?.version && compareVersions(latest.version, VERSION) > 0) {
+          const latestMajor = String(latest.version).split(".")[0];
+          const currentMajor = String(VERSION).split(".")[0];
+          versionNote +=
+            latestMajor === currentMajor
+              ? ` — ${latest.version} pending`
+              : ` — ${latest.version} requires a manual upgrade`;
+        }
+      } catch {}
+    }
+  } else if (kind === "package") {
+    versionNote = "  (npx install — manual updates)";
+  } else {
+    versionNote = "  (checkout)";
+  }
   console.log(`\nforge-delegate: ${VERSION}${versionNote}`);
   console.log(
     `opencode: ${oc.found ? (oc.version?.raw ?? "unknown version") : "not found on PATH"}` +
@@ -235,10 +304,9 @@ async function status() {
       console.log(`recorded delegations: ${lines} (see 'forge-delegate stats')`);
     }
   } catch {}
-  if (update.updateAvailable) {
-    console.log(`\nUpdate to ${update.latest}:`);
-    console.log("  npx install:  rm -rf ~/.npm/_npx   (then restart your agent)");
-    console.log("  global:       npm i -g forge-delegate");
+  if (kind === "package") {
+    console.log("\nThis npx install never refreshes itself.");
+    console.log("Switch to automatic updates: npx -y forge-delegate@latest setup");
   }
 }
 
@@ -291,8 +359,11 @@ Usage:
   forge-delegate config set --model <m> [--agent <a>] [--variant <v>]
                           [--timeout <s>] [--dir <path>] [--autoApprove true|false]
   forge-delegate config path                  Print config file path
-  forge-delegate status                       Show version, update status, opencode logins, usage
+  forge-delegate status                       Show version, update mode, opencode logins, usage
   forge-delegate stats                        Show detailed usage statistics
+
+Automatic updates (launcher installs) are on by default. Disable with:
+  FORGE_AUTO_UPDATE=0
 
 Models come from your opencode installation:
   opencode auth login <provider>   add a provider

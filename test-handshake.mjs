@@ -8,8 +8,6 @@ const { version } = JSON.parse(readFileSync(new URL("./package.json", import.met
 
 const child = spawn("node", ["server.mjs"], {
   stdio: ["pipe", "pipe", "inherit"],
-  // Keep the smoke test hermetic: no registry call during prepublish.
-  env: { ...process.env, FORGE_NO_UPDATE_CHECK: "1" },
 });
 
 let buf = "";
@@ -85,13 +83,13 @@ for (const [name, args] of calls) {
       const text = r.result.content[0].text;
       if (text.includes(`version: ${version}`)) ok(`reports version ${version}`);
       else fail(`get_delegate_config missing 'version: ${version}'`);
-      if (text.includes("updateAvailable:")) ok("reports updateAvailable");
-      else fail("get_delegate_config missing updateAvailable");
+      if (text.includes("install:")) ok("reports install mode");
+      else fail("get_delegate_config missing install mode");
     }
   }
 }
 
-// The CLI must be able to state its own version (the whole point of the update check).
+// The CLI must be able to state its own version.
 try {
   const out = execFileSync("node", ["cli.mjs", "--version"], { encoding: "utf8" }).trim();
   if (out === version) ok(`cli --version -> ${out}`);
