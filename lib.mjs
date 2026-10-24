@@ -25,6 +25,25 @@ export function detectOpencode() {
   });
 }
 
+// The startup warning on stderr is easy for an MCP client to swallow, and a v1
+// binary does not fail loudly: `run` reads the v2 flags as a help request and
+// exits 0. Check once per process, then refuse to spawn instead of returning
+// "(no output)" and letting it look like the model had nothing to say.
+let opencodeGate;
+function requireOpencodeV2() {
+  opencodeGate ??= detectOpencode();
+  return opencodeGate.then((oc) => {
+    if (!oc.found)
+      throw new Error("opencode not found on PATH — install it from https://opencode.ai");
+    if (!oc.supported)
+      throw new Error(
+        `opencode ${oc.version?.raw ?? "(unknown version)"} is too old — forge-delegate requires opencode 2 or newer ` +
+          `(v2 removed the CLI flags it uses). Run: opencode upgrade`
+      );
+    return oc;
+  });
+}
+
 const CONFIG_DIR = join(homedir(), ".forge-delegate");
 const AUTH_PATH = join(homedir(), ".local/share/opencode/auth.json");
 const OPENCODE_CONFIG_PATH = join(homedir(), ".config/opencode/opencode.json");
@@ -191,6 +210,7 @@ export function parseEvents(stdout) {
 }
 
 export async function opencodeRun(model, prompt, opts = {}) {
+  await requireOpencodeV2();
   const started = Date.now();
   const variant = opts.variant ?? (await pickVariant(model));
   const timeoutMs = opts.timeoutMs ?? OPENCODE_TIMEOUT;
