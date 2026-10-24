@@ -1,7 +1,11 @@
 import { execFile, spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+export const VERSION = JSON.parse(readFileSync(join(here, "package.json"), "utf8")).version;
 
 export const OPENCODE_TIMEOUT = Number(process.env.FORGE_OPENCODE_TIMEOUT ?? 900_000);
 
@@ -49,7 +53,78 @@ const AUTH_PATH = join(homedir(), ".local/share/opencode/auth.json");
 const OPENCODE_CONFIG_PATH = join(homedir(), ".config/opencode/opencode.json");
 const CATALOG_CACHE = join(CONFIG_DIR, "models-dev.json");
 const CATALOG_TTL = 24 * 3600 * 1000;
+const UPDATE_CACHE = join(CONFIG_DIR, "update-check.json");
+const UPDATE_TTL = 24 * 3600 * 1000;
 const OLLAMA_BASE = process.env.OLLAMA_URL ?? "http://localhost:11434";
+
+function parseVersion(v) {
+  const m = String(v ?? "").match(/^(\d+)\.(\d+)\.(\d+)/);
+  return m ? [+m[1], +m[2], +m[3]] : null;
+}
+
+export function compareVersions(a, b) {
+  const pa = parseVersion(a);
+  const pb = parseVersion(b);
+  if (!pa || !pb) return 0;
+  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
+  return 0;
+}
+
+function readUpdateCache() {
+  try {
+    const cached = JSON.parse(readFileSync(UPDATE_CACHE, "utf8"));
+    if (cached?.latest && Number.isFinite(cached.checkedAt)) return cached;
+  } catch {}
+  return null;
+}
+
+// An installed copy cannot see the registry on its own, and npx happily reuses a
+// cached install forever — which is how this server ran 1.0.7 while 1.0.9 was
+// published. Check once a day, cache the answer, and never let a network failure
+// break the caller. Opt out with FORGE_NO_UPDATE_CHECK=1 (or NO_UPDATE_NOTIFIER=1).
+export async function checkForUpdate({ force = false, timeoutMs = 3000 } = {}) {
+  const cached = readUpdateCache();
+  if (!force && cached && Date.now() - cached.checkedAt < UPDATE_TTL) {
+    return {
+      current: VERSION,
+      latest: cached.latest,
+      updateAvailable: compareVersions(cached.latest, VERSION) > 0,
+      checkedAt: cached.checkedAt,
+    };
+  }
+
+  if (process.env.FORGE_NO_UPDATE_CHECK || process.env.NO_UPDATE_NOTIFIER) {
+    return { current: VERSION, latest: null, updateAvailable: false, checkedAt: null, disabled: true };
+  }
+
+  try {
+    const res = await fetch("https://registry.npmjs.org/forge-delegate/latest", {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) throw new Error(`registry returned ${res.status}`);
+    const { version } = await res.json();
+    if (!parseVersion(version)) throw new Error("registry returned no version");
+    const checkedAt = Date.now();
+    try {
+      mkdirSync(CONFIG_DIR, { recursive: true });
+      writeFileSync(UPDATE_CACHE, JSON.stringify({ latest: version, checkedAt }));
+    } catch {}
+    return {
+      current: VERSION,
+      latest: version,
+      updateAvailable: compareVersions(version, VERSION) > 0,
+      checkedAt,
+    };
+  } catch (e) {
+    return {
+      current: VERSION,
+      latest: cached?.latest ?? null,
+      updateAvailable: cached ? compareVersions(cached.latest, VERSION) > 0 : false,
+      checkedAt: cached?.checkedAt ?? null,
+      error: e.message,
+    };
+  }
+}
 
 function execFileText(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {

@@ -173,12 +173,21 @@ Every delegation tool also accepts per-call `model`, `directory`, `agent`, `auto
 ## CLI
 
 ```text
+forge-delegate --version  Print the installed version
 forge-delegate setup      Register with Claude Code / Codex / opencode
 forge-delegate serve      Start the MCP server (used internally)
 forge-delegate config     get | set | path
-forge-delegate status     Show opencode logins and usage summary
+forge-delegate status     Show version, update status, opencode logins, usage
 forge-delegate stats      Show detailed usage statistics
 ```
+
+`status` also asks npm for the newest release (cached for 24 hours in
+`~/.forge-delegate/update-check.json`) and reports it when a newer version exists. Disable the
+check with `FORGE_NO_UPDATE_CHECK=1`. `get_delegate_config` returns the same version and
+`updateAvailable` fields, so an agent can answer "is this up to date?" without a CLI call.
+
+Updating an npx install is not automatic: npx keeps using its cached copy. Clear it with
+`rm -rf ~/.npm/_npx` and restart your agent, or install globally with `npm i -g forge-delegate`.
 
 ## Publishing (npm)
 

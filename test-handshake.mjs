@@ -1,10 +1,15 @@
 // MCP handshake smoke test: boots the server via stdio, lists tools, and calls
 // each one once to catch invalid tools/call result shapes (e.g. bare-string returns).
 // Runs against the LOCAL source (node server.mjs). Exit code nonzero on any failure.
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
+const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 
 const child = spawn("node", ["server.mjs"], {
   stdio: ["pipe", "pipe", "inherit"],
+  // Keep the smoke test hermetic: no registry call during prepublish.
+  env: { ...process.env, FORGE_NO_UPDATE_CHECK: "1" },
 });
 
 let buf = "";
@@ -74,7 +79,25 @@ for (const [name, args] of calls) {
   if (r.error) fail(`${name}: ${r.error.message.slice(0, 80)}`);
   else if (r.result?.isError) fail(`${name}: returned isError=true: ${r.result.content?.[0]?.text}`);
   else if (!r.result?.content?.[0]?.text) fail(`${name}: no text content in result`);
-  else ok(`${name}`);
+  else {
+    ok(name);
+    if (name === "get_delegate_config") {
+      const text = r.result.content[0].text;
+      if (text.includes(`version: ${version}`)) ok(`reports version ${version}`);
+      else fail(`get_delegate_config missing 'version: ${version}'`);
+      if (text.includes("updateAvailable:")) ok("reports updateAvailable");
+      else fail("get_delegate_config missing updateAvailable");
+    }
+  }
+}
+
+// The CLI must be able to state its own version (the whole point of the update check).
+try {
+  const out = execFileSync("node", ["cli.mjs", "--version"], { encoding: "utf8" }).trim();
+  if (out === version) ok(`cli --version -> ${out}`);
+  else fail(`cli --version printed '${out}', expected '${version}'`);
+} catch (e) {
+  fail(`cli --version failed: ${e.message}`);
 }
 
 // ask_model/delegate_* require a live model — skip them here (they share the withUsage path).

@@ -21,16 +21,17 @@ import {
   saveConfig,
   configPath,
   resolveConfig,
+  checkForUpdate,
+  VERSION,
 } from "./lib.mjs";
 
 const execFileAsync = promisify(execFile);
 const RUNS_DIR = join(homedir(), ".forge-delegate", "runs");
 const here = dirname(fileURLToPath(import.meta.url));
-const VERSION = JSON.parse(readFileSync(join(here, "package.json"), "utf8")).version;
 
-// The server auto-updates (npx re-resolves latest on each spawn) but the installed
-// skill is a file on disk that only `setup` rewrites — so a published skill change
-// goes unnoticed. Compare the two and say so, rather than running stale in silence.
+// The installed skill is a file on disk that only `setup` rewrites, so a published
+// skill change goes unnoticed. Compare the two and say so, rather than running
+// stale in silence.
 function skillStatus() {
   const src = join(here, "skills", "delegate-work", "SKILL.md");
   if (!existsSync(src)) return null;
@@ -286,15 +287,30 @@ server.tool(
 
 server.tool(
   "get_delegate_config",
-  "Read the current forge-delegate configuration: defaultModel, defaultAgent, defaultVariant, autoApprove, timeoutMs, defaultDirectory, and named profiles. Call this to see what will be used when a model/directory is omitted.",
+  "Read the current forge-delegate configuration: defaultModel, defaultAgent, defaultVariant, autoApprove, timeoutMs, defaultDirectory, and named profiles — plus the installed version and whether a newer release is published. Call this to see what will be used when a model/directory is omitted, or when the user asks whether forge-delegate is up to date.",
   {},
   async () => {
     const cfg = loadConfig();
+    const update = await checkForUpdate();
     const { profiles, ...rest } = cfg;
     const lines = Object.entries(rest).map(([k, v]) => `  ${k}: ${v ?? "(unset)"}`);
     const prof = Object.entries(profiles).map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`).join("\n") || "  (none)";
     const skill = SKILL_STATUS ? `\nskill (delegate-work): ${SKILL_STATUS.detail}${SKILL_STATUS.state === "ok" ? "" : " — run: npx -y forge-delegate setup"}` : "";
-    return { content: [{ type: "text", text: `config: ${configPath()}\n${lines.join("\n")}\nprofiles:\n${prof}${skill}` }] };
+    const updateLine = update.disabled
+      ? "updateAvailable: unknown (check disabled)"
+      : update.error && !update.latest
+        ? `updateAvailable: unknown (${update.error})`
+        : update.updateAvailable
+          ? `updateAvailable: true (latest ${update.latest}, running ${VERSION})`
+          : "updateAvailable: false";
+    return {
+      content: [
+        {
+          type: "text",
+          text: `version: ${VERSION}\n${updateLine}\nconfig: ${configPath()}\n${lines.join("\n")}\nprofiles:\n${prof}${skill}`,
+        },
+      ],
+    };
   }
 );
 
@@ -323,3 +339,7 @@ server.tool(
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
+
+// Warm the update cache after the handshake — a registry call must never delay
+// the MCP connection. get_delegate_config reads whatever this leaves behind.
+checkForUpdate().catch(() => {});

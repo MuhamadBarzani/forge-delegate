@@ -5,7 +5,7 @@ import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
-import { loadConfig, saveConfig, configPath, detectOpencode, loadOpencodeAuth } from "./lib.mjs";
+import { loadConfig, saveConfig, configPath, detectOpencode, loadOpencodeAuth, checkForUpdate, VERSION } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -210,9 +210,17 @@ function configCmd(argv) {
 }
 
 async function status() {
+  const update = await checkForUpdate();
   const oc = await detectOpencode();
+  let versionNote;
+  if (update.disabled) versionNote = "  (update check disabled)";
+  else if (update.updateAvailable) versionNote = `  \u2192 ${update.latest} available`;
+  else if (update.error && !update.latest) versionNote = "  (update check unavailable)";
+  else if (update.error) versionNote = `  (latest known: ${update.latest}; check failed)`;
+  else versionNote = "  (up to date)";
+  console.log(`\nforge-delegate: ${VERSION}${versionNote}`);
   console.log(
-    `\nopencode: ${oc.found ? (oc.version?.raw ?? "unknown version") : "not found on PATH"}` +
+    `opencode: ${oc.found ? (oc.version?.raw ?? "unknown version") : "not found on PATH"}` +
       `${oc.found && !oc.supported ? "  (too old — requires v2 or newer)" : ""}`
   );
   let providers = [];
@@ -227,6 +235,11 @@ async function status() {
       console.log(`recorded delegations: ${lines} (see 'forge-delegate stats')`);
     }
   } catch {}
+  if (update.updateAvailable) {
+    console.log(`\nUpdate to ${update.latest}:`);
+    console.log("  npx install:  rm -rf ~/.npm/_npx   (then restart your agent)");
+    console.log("  global:       npm i -g forge-delegate");
+  }
 }
 
 function stats() {
@@ -268,6 +281,7 @@ function help() {
 forge-delegate — delegate coding work from Claude Code/Codex/opencode to other AI models
 
 Usage:
+  forge-delegate --version                     Print the installed version
   forge-delegate setup [--model provider/model] [--targets claude,codex,opencode]
                        [--scope user|project] [--project-dir <path>] [--no-skill]
                                              Interactive setup; flags optional (run bare to be prompted)
@@ -277,7 +291,7 @@ Usage:
   forge-delegate config set --model <m> [--agent <a>] [--variant <v>]
                           [--timeout <s>] [--dir <path>] [--autoApprove true|false]
   forge-delegate config path                  Print config file path
-  forge-delegate status                       Show opencode logins and usage summary
+  forge-delegate status                       Show version, update status, opencode logins, usage
   forge-delegate stats                        Show detailed usage statistics
 
 Models come from your opencode installation:
@@ -287,7 +301,8 @@ Models come from your opencode installation:
 }
 
 const cmd = process.argv[2] ?? "help";
-if (cmd === "setup") await setup();
+if (cmd === "--version" || cmd === "-v" || cmd === "version") console.log(VERSION);
+else if (cmd === "setup") await setup();
 else if (cmd === "serve") await import("./server.mjs");
 else if (cmd === "config") configCmd(process.argv.slice(3));
 else if (cmd === "status") await status();
