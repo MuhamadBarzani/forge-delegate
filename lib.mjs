@@ -32,7 +32,32 @@ const CATALOG_CACHE = join(CONFIG_DIR, "models-dev.json");
 const CATALOG_TTL = 24 * 3600 * 1000;
 const OLLAMA_BASE = process.env.OLLAMA_URL ?? "http://localhost:11434";
 
-function loadOpencodeAuth() {
+function execFileText(cmd, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { timeout: 15_000, maxBuffer: 4 * 1024 * 1024, ...opts }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout);
+    });
+  });
+}
+
+// opencode v2 moved credentials into its own store; auth.json is frozen at
+// whatever v1 last wrote there. Reading the file on v2 therefore hands back
+// stale keys, which surface as 401s that look like the user's fault. Ask v2
+// for its credentials instead, and fall back to the file on v1 (where the
+// `auth export` command does not exist).
+export async function loadOpencodeAuth() {
+  try {
+    const entries = JSON.parse(await execFileText("opencode", ["auth", "export"]));
+    if (Array.isArray(entries)) {
+      const auth = {};
+      for (const e of entries) {
+        if (e?.integrationID && e?.value?.type === "key" && e.value.key)
+          auth[e.integrationID] = { type: "api", key: e.value.key };
+      }
+      return auth;
+    }
+  } catch {}
   try {
     return JSON.parse(readFileSync(AUTH_PATH, "utf8"));
   } catch {
@@ -217,7 +242,7 @@ export async function callDirect(baseUrl, model, messages, apiKey, extraBody = {
 }
 
 export async function listAuthDirectProviders() {
-  const auth = loadOpencodeAuth();
+  const auth = await loadOpencodeAuth();
   let catalog = {};
   try {
     catalog = await loadCatalog();
@@ -287,7 +312,7 @@ export async function runAuthDirect(model, prompt) {
   if (slashIdx <= 0) throw new Error(`expected provider/model format, got '${model}'`);
   const prov = model.slice(0, slashIdx);
   const id = model.slice(slashIdx + 1);
-  const auth = loadOpencodeAuth();
+  const auth = await loadOpencodeAuth();
   if (!auth[prov]?.key) {
     // opencode's own free tier rejects direct HTTP ("can only be used from within
     // OpenCode"), so these models are reachable only through the CLI.

@@ -5,7 +5,7 @@ import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
-import { loadConfig, saveConfig, configPath, detectOpencode } from "./lib.mjs";
+import { loadConfig, saveConfig, configPath, detectOpencode, loadOpencodeAuth } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -170,8 +170,7 @@ async function setup() {
   // 3. Check opencode logins
   let authCount = 0;
   try {
-    const authPath = join(homedir(), ".local/share/opencode/auth.json");
-    authCount = Object.keys(JSON.parse(readFileSync(authPath, "utf8"))).length;
+    authCount = Object.keys(await loadOpencodeAuth()).length;
   } catch {}
   if (authCount > 0) {
     console.log(`Found ${authCount} opencode provider login(s) — ready to use.`);
@@ -218,10 +217,7 @@ async function status() {
   );
   let providers = [];
   try {
-    const authPath = join(homedir(), ".local/share/opencode/auth.json");
-    const { listAuthDirectProviders } = await import("./lib.mjs");
-    const auth = JSON.parse(readFileSync(authPath, "utf8"));
-    providers = Object.keys(auth);
+    providers = Object.keys(await loadOpencodeAuth());
   } catch {}
   console.log(`\nopencode logins: ${providers.length ? providers.join(", ") : "none (run 'opencode auth login <provider>')"}\n`);
   try {
