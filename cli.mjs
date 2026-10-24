@@ -5,10 +5,9 @@ import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execSync, execFileSync } from "node:child_process";
-import { loadConfig, saveConfig, configPath, detectOpencode, loadOpencodeAuth, compareVersions, VERSION } from "./lib.mjs";
+import { loadConfig, saveConfig, configPath, detectOpencode, loadOpencodeAuth, installKind, VERSION } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const herePosix = here.replace(/\\/g, "/");
 const ROOT = join(homedir(), ".forge-delegate");
 const LAUNCHER = join(ROOT, "launcher.mjs");
 
@@ -29,15 +28,7 @@ function parseArgs(argv) {
 }
 
 function isPublishedInstall() {
-  return herePosix.includes("node_modules/forge-delegate") || herePosix.includes("/.npm/_npx/");
-}
-
-// How this copy was installed matters to the user: only the launcher path can
-// update itself.
-function installKind() {
-  if (herePosix.includes("/.forge-delegate/pkg/")) return "launcher";
-  if (herePosix.includes("/.npm/_npx/") || herePosix.includes("node_modules/forge-delegate")) return "package";
-  return "checkout";
+  return installKind() !== "checkout";
 }
 
 function readLauncherState() {
@@ -269,19 +260,8 @@ async function status() {
   if (kind === "launcher") {
     const state = readLauncherState();
     versionNote = state?.autoUpdate === false ? "  (auto-update off)" : "  (auto-update on)";
-    if (state?.autoUpdate !== false) {
-      try {
-        const latest = JSON.parse(readFileSync(join(ROOT, "latest.json"), "utf8"));
-        if (latest?.version && compareVersions(latest.version, VERSION) > 0) {
-          const latestMajor = String(latest.version).split(".")[0];
-          const currentMajor = String(VERSION).split(".")[0];
-          versionNote +=
-            latestMajor === currentMajor
-              ? ` — ${latest.version} pending`
-              : ` — ${latest.version} requires a manual upgrade`;
-        }
-      } catch {}
-    }
+    if (state?.pending) versionNote += ` — ${state.pending} pending`;
+    else if (state?.manualUpgrade) versionNote += ` — ${state.manualUpgrade} requires a manual upgrade`;
   } else if (kind === "package") {
     versionNote = "  (npx install — manual updates)";
   } else {

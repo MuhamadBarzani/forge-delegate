@@ -21,22 +21,20 @@ import {
   saveConfig,
   configPath,
   resolveConfig,
+  installKind,
   VERSION,
 } from "./lib.mjs";
 
 const execFileAsync = promisify(execFile);
 const RUNS_DIR = join(homedir(), ".forge-delegate", "runs");
 const here = dirname(fileURLToPath(import.meta.url));
-const herePosix = here.replace(/\\/g, "/");
-
-// Only a launcher install can refresh itself; the report tells the user (and
-// the model) which kind they have.
-function installKind() {
-  if (herePosix.includes("/.forge-delegate/pkg/")) return "launcher (automatic updates)";
-  if (herePosix.includes("/.npm/_npx/") || herePosix.includes("node_modules/forge-delegate"))
-    return "npx/package (manual updates)";
-  return "checkout";
-}
+const INSTALL_KIND = installKind();
+const INSTALL_LABEL =
+  INSTALL_KIND === "launcher"
+    ? "launcher (automatic updates)"
+    : INSTALL_KIND === "package"
+      ? "npx/package (manual updates)"
+      : "checkout";
 
 // The installed skill is a file on disk that only `setup` rewrites, so a published
 // skill change goes unnoticed. Compare the two and say so, rather than running
@@ -308,7 +306,7 @@ server.tool(
       content: [
         {
           type: "text",
-          text: `version: ${VERSION}\ninstall: ${installKind()}\nconfig: ${configPath()}\n${lines.join("\n")}\nprofiles:\n${prof}${skill}`,
+          text: `version: ${VERSION}\ninstall: ${INSTALL_LABEL}\nconfig: ${configPath()}\n${lines.join("\n")}\nprofiles:\n${prof}${skill}`,
         },
       ],
     };

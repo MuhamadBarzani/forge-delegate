@@ -173,6 +173,8 @@ if (process.argv[2] === "--install-only") {
 
 const current = installedVersions()[0] ?? null;
 let target = current;
+let pending = null;
+let manualUpgrade = null;
 
 if (AUTO) {
   const latest = await latestVersion();
@@ -190,11 +192,15 @@ if (AUTO) {
           stdio: "ignore",
         });
         child.unref();
+        pending = latest;
       } else if (installVersion(latest)) {
         // Nothing usable installed yet — this one has to be synchronous.
         target = latest;
+      } else {
+        pending = latest;
       }
     } else if (current && latestMajor > currentMajor) {
+      manualUpgrade = latest;
       process.stderr.write(
         `forge-delegate: ${latest} is a major update and needs a manual upgrade; running ${current}\n`
       );
@@ -208,7 +214,10 @@ if (cli) {
   syncSkill(cli);
   try {
     mkdirSync(ROOT, { recursive: true });
-    writeFileSync(STATE, JSON.stringify({ version: target, autoUpdate: AUTO, updatedAt: Date.now() }));
+    writeFileSync(
+      STATE,
+      JSON.stringify({ version: target, autoUpdate: AUTO, pending, manualUpgrade, updatedAt: Date.now() })
+    );
   } catch {}
 }
 

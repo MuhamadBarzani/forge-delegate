@@ -5,7 +5,16 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const herePosix = here.replace(/\\/g, "/");
 export const VERSION = JSON.parse(readFileSync(join(here, "package.json"), "utf8")).version;
+
+// How this copy was installed decides whether it can update itself. Shared by
+// the CLI and the server so the paths are classified in exactly one place.
+export function installKind() {
+  if (herePosix.includes("/.forge-delegate/pkg/")) return "launcher";
+  if (herePosix.includes("/.npm/_npx/") || herePosix.includes("node_modules/forge-delegate")) return "package";
+  return "checkout";
+}
 
 export const OPENCODE_TIMEOUT = Number(process.env.FORGE_OPENCODE_TIMEOUT ?? 900_000);
 
@@ -54,19 +63,6 @@ const OPENCODE_CONFIG_PATH = join(homedir(), ".config/opencode/opencode.json");
 const CATALOG_CACHE = join(CONFIG_DIR, "models-dev.json");
 const CATALOG_TTL = 24 * 3600 * 1000;
 const OLLAMA_BASE = process.env.OLLAMA_URL ?? "http://localhost:11434";
-
-function parseVersion(v) {
-  const m = String(v ?? "").match(/^(\d+)\.(\d+)\.(\d+)/);
-  return m ? [+m[1], +m[2], +m[3]] : null;
-}
-
-export function compareVersions(a, b) {
-  const pa = parseVersion(a);
-  const pb = parseVersion(b);
-  if (!pa || !pb) return 0;
-  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
-  return 0;
-}
 
 function execFileText(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
