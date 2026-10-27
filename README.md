@@ -48,6 +48,8 @@ run it just uses sensible defaults.
 1. Register the MCP server with each agent you chose (`--targets claude,codex,opencode`).
 2. Set your default model (`--model`) so calls can omit `model`.
 3. Install the auto-update launcher (published installs; skipped for a git checkout).
+4. For Codex, raise the MCP timeouts (`startup_timeout_sec`, `tool_timeout_sec`) above Codex's
+   10s/60s defaults so inline delegations aren't cut off.
 
 Routing and cost-policy guidance is injected by the MCP server itself into the agent's context
 via MCP `instructions` — no memory-file (`CLAUDE.md`/`AGENTS.md`) editing needed.
@@ -69,8 +71,8 @@ Then restart your agent and confirm the server is connected: `/mcp` in Claude Co
 
 ### Windows
 
-Use the `npx` route — no bash needed (works in cmd/PowerShell). Drop `codex` from `--targets`
-(Codex CLI isn't natively supported on Windows; use `--targets "claude,opencode"`).
+Use the `npx` route — no bash needed (works in cmd/PowerShell). All three targets, including
+native Windows Codex CLI, are supported.
 
 ### Scope
 
@@ -122,8 +124,9 @@ Full guide: [docs/DELEGATION.md](docs/DELEGATION.md)
 
 ### The `delegate-work` skill
 
-Setup also installs a Claude Code skill (`~/.claude/skills/delegate-work/`, or
-`<project>/.claude/skills/` under `--scope project`). Skip it with `--no-skill`.
+Setup also installs the skill for Claude Code (`~/.claude/skills/delegate-work/`, or
+`<project>/.claude/skills/` under `--scope project`) and for Codex (`~/.agents/skills/delegate-work/`,
+or `<project>/.agents/skills/`). Skip it with `--no-skill`.
 
 It exists because MCP server `instructions` are injected once at session start and
 get buried as the context fills — by turn 30 they lose to whatever is in front of the

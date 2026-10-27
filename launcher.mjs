@@ -23,7 +23,8 @@ const ROOT = join(homedir(), ".forge-delegate");
 const PKG = join(ROOT, "pkg");
 const STATE = join(ROOT, "launcher-state.json");
 const LATEST = join(ROOT, "latest.json");
-const SKILL = join(homedir(), ".claude", "skills", "delegate-work", "SKILL.md");
+// User-scope skill copies written by `setup`: Claude Code's, then Codex's.
+const SKILLS = [".claude", ".agents"].map((dir) => join(homedir(), dir, "skills", "delegate-work", "SKILL.md"));
 const REGISTRY = process.env.FORGE_REGISTRY ?? "https://registry.npmjs.org";
 const TTL = 6 * 3600 * 1000;
 const AUTO =
@@ -149,9 +150,13 @@ function installOnly(version) {
 function syncSkill(cli) {
   try {
     const src = join(dirname(cli), "skills", "delegate-work", "SKILL.md");
-    if (!existsSync(src) || !existsSync(SKILL)) return;
+    if (!existsSync(src)) return;
     const want = readFileSync(src, "utf8");
-    if (readFileSync(SKILL, "utf8") !== want) writeFileSync(SKILL, want);
+    for (const skill of SKILLS) {
+      try {
+        if (existsSync(skill) && readFileSync(skill, "utf8") !== want) writeFileSync(skill, want);
+      } catch {}
+    }
   } catch {}
 }
 
@@ -226,9 +231,16 @@ const npx = process.platform === "win32" ? "npx.cmd" : "npx";
 // `node ~/.forge-delegate/launcher.mjs status` works without a global binary.
 const args = process.argv.slice(2);
 const cliArgs = args.length ? args : ["serve"];
+const npxArgs = ["-y", "forge-delegate", ...cliArgs];
+// Node refuses to spawn a .cmd file without a shell (CVE-2024-27980), so on Windows
+// npx goes through cmd.exe. It is passed as one command string because Node 24
+// deprecates combining an args array with `shell: true`.
+const winQuote = (a) => (/[\s"&|<>^()%!]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a);
 const child = cli
   ? spawn(process.execPath, [cli, ...cliArgs], { stdio: "inherit" })
-  : spawn(npx, ["-y", "forge-delegate", ...cliArgs], { stdio: "inherit" });
+  : process.platform === "win32"
+    ? spawn([npx, ...npxArgs].map(winQuote).join(" "), { stdio: "inherit", shell: true })
+    : spawn(npx, npxArgs, { stdio: "inherit" });
 
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   process.on(signal, () => child.kill(signal));

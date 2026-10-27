@@ -78,10 +78,12 @@ function launchForThisInstall() {
 // The MCP server's `instructions` are injected once at session start and decay as the
 // context fills. A skill is re-matched against every user turn, so the delegation
 // triggers stay live for the whole session.
-function installClaudeSkill(scope, projectDir) {
+// Claude Code reads skills from .claude/skills; Codex reads them from .agents/skills
+// (~/.agents/skills, or .agents/skills in the repo), not from ~/.codex.
+function installSkill(dir, scope, projectDir) {
   const src = join(here, "skills", "delegate-work", "SKILL.md");
   if (!existsSync(src)) return;
-  const root = scope === "user" ? join(homedir(), ".claude") : join(projectDir, ".claude");
+  const root = scope === "user" ? join(homedir(), dir) : join(projectDir, dir);
   const dest = join(root, "skills", "delegate-work", "SKILL.md");
   mkdirSync(dirname(dest), { recursive: true });
   copyFileSync(src, dest);
@@ -90,7 +92,7 @@ function installClaudeSkill(scope, projectDir) {
 
 // `claude mcp` writes .mcp.json relative to its own cwd, so a project-scope install
 // must run from projectDir — otherwise it lands in whatever directory setup was
-// invoked from, and installClaudeSkill (which does honour projectDir) disagrees
+// invoked from, and installSkill (which does honour projectDir) disagrees
 // with it.
 function registerClaude(launch, scope, projectDir) {
   const opts = scope === "project" ? { cwd: projectDir } : {};
@@ -115,8 +117,17 @@ function registerCodex(launchArr, scope, projectDir) {
   try {
     toml = readFileSync(path, "utf8");
   } catch {}
+  // Codex allows 10s for a server to start and 60s per tool call by default. A cold
+  // launcher start may npm-install first, and an inline delegation runs for minutes.
+  // The server enforces its own timeoutMs, so this ceiling only has to stay above it,
+  // including after timeoutMs is raised later without re-running setup.
+  const toolTimeout = Math.max(3600, Math.ceil(loadConfig().timeoutMs / 1000) + 60);
+  // Codex starts servers without a shell, so on Windows it needs npx's .cmd shim by name.
+  const command = process.platform === "win32" && launchArr[0] === "npx" ? "npx.cmd" : launchArr[0];
   const section = `[mcp_servers.forge-delegate]`;
-  const block = `${section}\ncommand = ${JSON.stringify(launchArr[0])}\nargs = ${JSON.stringify(launchArr.slice(1))}\n`;
+  const block =
+    `${section}\ncommand = ${JSON.stringify(command)}\nargs = ${JSON.stringify(launchArr.slice(1))}\n` +
+    `startup_timeout_sec = 120\ntool_timeout_sec = ${toolTimeout}\n`;
   const escaped = section.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   if (toml.includes(section)) {
     toml = toml.replace(new RegExp(`${escaped}[\\s\\S]*?(?=\\n\\[|$)`), block.trimEnd());
@@ -201,9 +212,12 @@ async function setup() {
     try {
       if (target === "claude") {
         registerClaude(launch, scope, projectDir);
-        if (!flags["no-skill"]) installClaudeSkill(scope, projectDir);
+        if (!flags["no-skill"]) installSkill(".claude", scope, projectDir);
       }
-      else if (target === "codex") registerCodex(launchArr, scope, projectDir);
+      else if (target === "codex") {
+        registerCodex(launchArr, scope, projectDir);
+        if (!flags["no-skill"]) installSkill(".agents", scope, projectDir);
+      }
       else if (target === "opencode") registerOpencode(launchArr, scope, projectDir);
       else console.log(`  ✗ unknown target '${target}' (use claude,codex,opencode)`);
     } catch (e) {
@@ -333,7 +347,7 @@ Usage:
   forge-delegate setup [--model provider/model] [--targets claude,codex,opencode]
                        [--scope user|project] [--project-dir <path>] [--no-skill]
                                              Interactive setup; flags optional (run bare to be prompted)
-                                             --no-skill skips installing the delegate-work skill
+                                             --no-skill skips installing the delegate-work skill (Claude Code, Codex)
   forge-delegate serve                        Start the MCP server (used internally by agents)
   forge-delegate config get                   Show current configuration
   forge-delegate config set --model <m> [--agent <a>] [--variant <v>]

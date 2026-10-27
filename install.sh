@@ -12,7 +12,7 @@
 #   --targets a,b,c          hosts to register with: claude,codex,opencode (default all)
 #   --scope user|project     registration scope (default user)
 #   --project-dir <path>     project for --scope project (default current dir)
-#   --no-skill               skip installing the delegate-work skill for Claude Code
+#   --no-skill               skip installing the delegate-work skill for Claude Code and Codex
 #   --no-opencode            skip auto-installing opencode if missing
 #   --no-npx                 skip the npx route, force clone/checkout
 #   --help
