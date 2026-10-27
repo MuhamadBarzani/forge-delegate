@@ -13,6 +13,7 @@ import {
   runOne,
   opencodeArgs,
   parseEvents,
+  sessionUsage,
   pickVariant,
   detectOpencode,
   listAuthDirectProviders,
@@ -102,11 +103,13 @@ const server = new McpServer(
 );
 
 // Uniform wrapper: times the call, records usage, converts errors to tool errors.
+// fn returns the result text, or { text, tokens, cost } when it knows the usage.
 async function withUsage(tool, model, fn) {
   const started = Date.now();
   try {
-    const text = await fn();
-    logUsage({ tool, model, ms: Date.now() - started, ok: true });
+    const r = await fn();
+    const { text, tokens, cost } = typeof r === "string" ? { text: r } : r;
+    logUsage({ tool, model, ms: Date.now() - started, ok: true, tokens, cost });
     return { content: [{ type: "text", text }] };
   } catch (e) {
     logUsage({ tool, model, ms: Date.now() - started, ok: false });
@@ -114,11 +117,15 @@ async function withUsage(tool, model, fn) {
   }
 }
 
-function sessionFooter(sessionId, tokens) {
+function usageParts(tokens, cost) {
   const parts = [];
-  if (tokens) parts.push(`~${tokens} tokens used`);
-  parts.push(`session: ${sessionId}`);
-  return "\n" + parts.join(" · ");
+  if (tokens) parts.push(`~${tokens.toLocaleString("en-US")} tokens used`);
+  if (cost) parts.push(`$${cost.toFixed(4)}`);
+  return parts;
+}
+
+function sessionFooter(sessionId, tokens, cost) {
+  return "\n" + [...usageParts(tokens, cost), `session: ${sessionId}`].join(" · ");
 }
 
 async function startBackgroundJob(model, task, opts = {}) {
@@ -203,7 +210,7 @@ server.tool(
     const r = resolveConfig({ model });
     if (!r.model) return { content: [{ type: "text", text: "ERROR: no model specified and no defaultModel configured. Call set_delegate_config or pass model." }], isError: true };
     return withUsage("ask_model", r.model, () =>
-      runOne(r.model, system ? `${system}\n\n---\n\n${prompt}` : prompt).then((x) => x.text)
+      runOne(r.model, system ? `${system}\n\n---\n\n${prompt}` : prompt)
     );
   }
 );
@@ -245,7 +252,11 @@ server.tool(
         autoApprove: r.autoApprove,
         timeoutMs: r.timeoutMs,
       });
-      return `${res.text || "(no summary — agent may have only edited files)"}${sessionFooter(res.sessionId, res.tokens)} — pass session id as continue_session to follow up`;
+      return {
+        text: `${res.text || "(no summary — agent may have only edited files)"}${sessionFooter(res.sessionId, res.tokens, res.cost)} — pass session id as continue_session to follow up`,
+        tokens: res.tokens,
+        cost: res.cost,
+      };
     });
   }
 );
@@ -275,7 +286,17 @@ server.tool(
       const log = existsSync(meta.logPath) ? readFileSync(meta.logPath, "utf8") : "";
       const parsed = parseEvents(log);
       const tail = parsed.text || "(agent still thinking, no text output yet)";
-      const footer = parsed.sessionId ? ` · session: ${parsed.sessionId}` : "";
+      const parts = parsed.sessionId ? [`session: ${parsed.sessionId}`] : [];
+      if (!running && parsed.sessionId) {
+        const u = (await sessionUsage(parsed.sessionId, meta.started)) ?? { tokens: parsed.tokens, cost: null };
+        parts.unshift(...usageParts(u.tokens, u.cost));
+        // The job's delegate call was logged when it started; this adds its usage once.
+        if (!meta.usageLogged) {
+          logUsage({ tool: "delegate", model: meta.model, tokens: u.tokens, cost: u.cost, usageOnly: true });
+          writeFileSync(metaPath, JSON.stringify({ ...meta, usageLogged: true }));
+        }
+      }
+      const footer = parts.map((p) => ` · ${p}`).join("");
       let status = running ? "RUNNING" : "DONE";
       if (meta.deadline && Date.now() > meta.deadline) status = "TIMED OUT";
       return `[${status}] ${id} (${meta.model}, ${Math.round((Date.now() - meta.started) / 1000)}s)${footer}\n\n${tail.slice(-8000)}`;

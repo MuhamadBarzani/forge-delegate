@@ -212,6 +212,11 @@ export async function pickVariant(model) {
   return list.length === 1 ? list[0] : list[list.length - 2];
 }
 
+// opencode reports cached input apart from input, so a total has to add them back.
+function sumTokens(t) {
+  return (t.input ?? 0) + (t.output ?? 0) + (t.reasoning ?? 0) + (t.cache?.read ?? 0) + (t.cache?.write ?? 0);
+}
+
 export function parseEvents(stdout) {
   let text = "";
   let sessionId = null;
@@ -223,10 +228,30 @@ export function parseEvents(stdout) {
       if (!sessionId && ev.sessionID) sessionId = ev.sessionID;
       if (ev.type === "text" && ev.part?.text) text += (text ? "\n" : "") + ev.part.text;
       if (ev.type === "step_finish" && ev.part?.tokens)
-        tokens += (ev.part.tokens.input ?? 0) + (ev.part.tokens.output ?? 0);
+        tokens += sumTokens(ev.part.tokens);
     } catch {}
   }
   return { text: text.trim(), sessionId, tokens };
+}
+
+// The run's JSON stream only reports steps that end in a tool call, so the final
+// answer (and a run that never calls a tool) is missing from it. The exported
+// session has every assistant message with its tokens and cost; count the ones
+// created since `since` so a continued session leaves out earlier turns.
+export async function sessionUsage(sessionId, since = 0) {
+  try {
+    const out = await execFileText("opencode", ["session", "export", sessionId], { maxBuffer: 256 * 1024 * 1024 });
+    let tokens = 0;
+    let cost = 0;
+    for (const m of JSON.parse(out).messages ?? []) {
+      if (m.type !== "assistant" || (m.time?.created ?? 0) < since) continue;
+      if (m.tokens) tokens += sumTokens(m.tokens);
+      cost += m.cost ?? 0;
+    }
+    return { tokens, cost };
+  } catch {
+    return null;
+  }
 }
 
 export async function opencodeRun(model, prompt, opts = {}) {
@@ -264,7 +289,14 @@ export async function opencodeRun(model, prompt, opts = {}) {
     });
   });
   const { text, sessionId, tokens } = parseEvents(stdout);
-  return { text: text || "(no output)", sessionId, tokens, ms: Date.now() - started };
+  const usage = sessionId ? await sessionUsage(sessionId, started) : null;
+  return {
+    text: text || "(no output)",
+    sessionId,
+    tokens: usage?.tokens ?? tokens,
+    cost: usage?.cost ?? null,
+    ms: Date.now() - started,
+  };
 }
 
 export async function callDirect(baseUrl, model, messages, apiKey, extraBody = {}) {
@@ -375,7 +407,7 @@ export async function runAuthDirect(model, prompt) {
 export async function runOne(model, prompt) {
   if (model.startsWith("opencode:")) {
     const r = await opencodeRun(model.slice("opencode:".length), prompt);
-    return { text: r.text, tokens: r.tokens, backend: "opencode" };
+    return { text: r.text, tokens: r.tokens, cost: r.cost, backend: "opencode" };
   }
 
   if (model.startsWith("ollama:") || model.startsWith("local:") || model.startsWith("ollama/")) {

@@ -1,6 +1,6 @@
 {
   "name": "forge-delegate",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "mcpName": "io.github.MuhamadBarzani/forge-delegate",
   "description": "MCP server that delegates coding work from Claude Code, Codex or opencode to any model opencode can run, so your main agent's context stays small",
   "repository": {

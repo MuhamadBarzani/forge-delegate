@@ -109,6 +109,9 @@ opencode locally. File contents never touch your main agent's context. Fast task
 inline; long ones are auto-backgrounded by Claude Code (past ~2 min). Other hosts wait for an
 inline call, so the agent is told to pass `background:true` there for anything long.
 
+Each delegation's result ends with the tokens it used and, when the provider reports prices,
+its cost. `forge-delegate stats` totals both per model.
+
 ## When to delegate
 
 | ✅ Delegate — high volume, low risk | ⛔ Keep on the primary agent |

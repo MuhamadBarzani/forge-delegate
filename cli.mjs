@@ -337,7 +337,7 @@ async function status() {
   try {
     const usagePath = join(homedir(), ".forge-delegate", "usage.jsonl");
     if (existsSync(usagePath)) {
-      const lines = readFileSync(usagePath, "utf8").trim().split("\n").length;
+      const lines = readFileSync(usagePath, "utf8").trim().split("\n").filter((l) => !l.includes('"usageOnly"')).length;
       console.log(`recorded delegations: ${lines} (see 'forge-delegate stats')`);
     }
   } catch {}
@@ -359,22 +359,27 @@ function stats() {
     try {
       const u = JSON.parse(line);
       const key = `${u.tool} · ${u.model}`;
-      const s = byKey.get(key) ?? { calls: 0, ok: 0, ms: 0, tokens: 0 };
-      s.calls++;
-      if (u.ok) s.ok++;
-      s.ms += u.ms ?? 0;
+      const s = byKey.get(key) ?? { calls: 0, ok: 0, ms: 0, tokens: 0, cost: 0 };
+      // usageOnly entries carry a background job's tokens; the call itself was logged at start.
+      if (!u.usageOnly) {
+        s.calls++;
+        if (u.ok) s.ok++;
+        s.ms += u.ms ?? 0;
+      }
       s.tokens += u.tokens ?? 0;
+      s.cost += u.cost ?? 0;
       byKey.set(key, s);
     } catch {}
   }
   console.log("\nforge-delegate usage\n");
-  console.log("calls  ok%   avg(s)   tokens  tool · model");
+  console.log("calls  ok%   avg(s)    tokens      cost  tool · model");
   for (const [key, s] of [...byKey.entries()].sort((a, b) => b[1].calls - a[1].calls)) {
     console.log(
       String(s.calls).padStart(5),
-      Math.round((s.ok / s.calls) * 100).toString().padStart(4) + "%",
-      (s.ms / s.calls / 1000).toFixed(1).padStart(7),
-      s.tokens ? String(s.tokens).padStart(8) : "       —",
+      Math.round((s.ok / (s.calls || 1)) * 100).toString().padStart(4) + "%",
+      (s.ms / (s.calls || 1) / 1000).toFixed(1).padStart(7),
+      (s.tokens ? s.tokens.toLocaleString("en-US") : "—").padStart(9),
+      (s.cost ? `$${s.cost.toFixed(4)}` : "—").padStart(9),
       " ", key
     );
   }
