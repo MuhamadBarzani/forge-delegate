@@ -5,7 +5,7 @@ import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execSync, execFileSync } from "node:child_process";
-import { loadConfig, saveConfig, configPath, detectOpencode, loadOpencodeAuth, installKind, VERSION } from "./lib.mjs";
+import { loadConfig, saveConfig, configPath, detectOpencode, loadOpencodeAuth, listOpencodeModels, installKind, VERSION } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(homedir(), ".forge-delegate");
@@ -155,6 +155,43 @@ function registerOpencode(launchArr, scope, projectDir) {
   console.log(`  ✓ opencode (${path})`);
 }
 
+const FALLBACK_MODEL = "opencode/deepseek-v4.1-flash-free";
+const MAX_LISTED = 50;
+
+// Free opencode models come and go, so suggest one that this opencode actually lists.
+function suggestedModel(current, models) {
+  if (current.defaultModel) return current.defaultModel;
+  if (!models.length || models.includes(FALLBACK_MODEL)) return FALLBACK_MODEL;
+  return models.find((m) => m.startsWith("opencode/") && m.endsWith("-free")) ?? models[0];
+}
+
+// Show the models opencode can run and accept a number, a full name, or part
+// of a name to narrow a long list.
+async function pickModel(ask, def, models) {
+  if (!models.length) {
+    console.log("  (Couldn't list models — run `opencode models` to see what's available.)");
+    return ((await ask(`Default model [${def}]: `)) ?? "").trim() || def;
+  }
+  let shown = models;
+  for (;;) {
+    console.log(`\nModels available in your opencode${shown === models ? "" : " (filtered)"}:`);
+    shown.slice(0, MAX_LISTED).forEach((m, i) => console.log(`  ${String(i + 1).padStart(3)}. ${m}${m === def ? "  (default)" : ""}`));
+    if (shown.length > MAX_LISTED) console.log(`  … ${shown.length - MAX_LISTED} more — type part of a name to filter`);
+    console.log("  More providers (deepseek, kimi, openai, ollama, …): `opencode auth login <provider>`, then re-run setup.");
+    const input = ((await ask(`\nDefault model — number, name, or part of a name [${def}]: `)) ?? "").trim();
+    if (!input) return def;
+    if (/^\d+$/.test(input) && shown[+input - 1]) return shown[+input - 1];
+    if (models.includes(input)) return input;
+    const matches = models.filter((m) => m.toLowerCase().includes(input.toLowerCase()));
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) shown = matches;
+    else if (input.includes("/") || input.includes(":")) {
+      console.log(`  '${input}' isn't in opencode's list; using it anyway.`);
+      return input;
+    } else console.log(`  No model matches '${input}'.`);
+  }
+}
+
 async function setup() {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const ask = (q) => rl.question(q);
@@ -184,9 +221,28 @@ async function setup() {
     console.log(`  ✓ opencode ${oc.version.raw}\n`);
   }
 
+  // Check logins before choosing a model, so a provider logged into here shows up in the list.
+  let authCount = 0;
+  try {
+    authCount = Object.keys(await loadOpencodeAuth()).length;
+  } catch {}
+  if (authCount > 0) {
+    console.log(`  ✓ ${authCount} opencode provider login(s)`);
+  } else {
+    console.log("No opencode logins found. Free opencode/* models work without one; for other providers run:");
+    console.log("  opencode auth login <provider>   (e.g. opencode auth login deepseek)");
+    if (interactive && !model) await ask("Press Enter when done, or to continue with free models: ");
+  }
+
   if (!model) {
-    const def = current.defaultModel ?? "opencode/deepseek-v4.1-flash-free";
-    model = interactive ? ((await ask(`Default model [${def}]: `)) ?? "").trim() || def : def;
+    let models = [];
+    if (oc.supported) {
+      try {
+        models = await listOpencodeModels();
+      } catch {}
+    }
+    const def = suggestedModel(current, models);
+    model = interactive ? await pickModel(ask, def, models) : def;
   }
   if (!targets) targets = "claude,codex,opencode";
   if (!scope) scope = "user";
@@ -223,19 +279,6 @@ async function setup() {
     } catch (e) {
       console.log(`  ✗ ${target}: ${e.message}`);
     }
-  }
-
-  // 3. Check opencode logins
-  let authCount = 0;
-  try {
-    authCount = Object.keys(await loadOpencodeAuth()).length;
-  } catch {}
-  if (authCount > 0) {
-    console.log(`Found ${authCount} opencode provider login(s) — ready to use.`);
-  } else {
-    console.log("\nNo opencode logins found. To enable models, run:");
-    console.log("  opencode auth login <provider>   (e.g. opencode auth login deepseek)");
-    if (interactive) await ask("Press Enter when done (or Ctrl+C to skip): ");
   }
 
   console.log(`

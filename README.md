@@ -35,7 +35,8 @@ you chose, sets your default model, and installs a small launcher that keeps the
 date. Works on Windows (cmd/PowerShell), macOS, and Linux — no bash needed.
 
 Run `setup` **without flags** and it walks you through the choices interactively (defaults in
-`[brackets]`, Enter accepts); pass any of the flags to skip that prompt. In an automated/non-terminal
+`[brackets]`, Enter accepts). For the default model it lists every model your opencode can run
+and you pick one by number or name; pass any of the flags to skip that prompt. In an automated/non-terminal
 run it just uses sensible defaults.
 
 > GitHub Pages: enable it with *Settings → Pages → Deploy from a branch → `main` / `/docs`*.

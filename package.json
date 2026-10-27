@@ -1,6 +1,6 @@
 {
   "name": "forge-delegate",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "MCP server that delegates coding work from Claude Code, Codex or opencode to cheaper AI models, so your main agent's context stays small",
   "type": "module",
   "bin": {

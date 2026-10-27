@@ -97,6 +97,13 @@ export async function loadOpencodeAuth() {
   }
 }
 
+// Every model this opencode can run, as provider/model: free opencode/* ones
+// plus everything from the providers the user has logged into.
+export async function listOpencodeModels() {
+  const out = await execFileText("opencode", ["models"]);
+  return out.split("\n").map((s) => s.trim()).filter((s) => /^[^\s/]+\/\S+$/.test(s));
+}
+
 async function loadCatalog() {
   try {
     const cached = JSON.parse(readFileSync(CATALOG_CACHE, "utf8"));
