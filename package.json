@@ -1,7 +1,13 @@
 {
   "name": "forge-delegate",
-  "version": "1.2.2",
-  "description": "MCP server that delegates coding work from Claude Code, Codex or opencode to cheaper AI models, so your main agent's context stays small",
+  "version": "1.2.3",
+  "mcpName": "io.github.MuhamadBarzani/forge-delegate",
+  "description": "MCP server that delegates coding work from Claude Code, Codex or opencode to any model opencode can run, so your main agent's context stays small",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MuhamadBarzani/forge-delegate.git"
+  },
+  "homepage": "https://github.com/MuhamadBarzani/forge-delegate#readme",
   "type": "module",
   "bin": {
     "forge-delegate": "cli.mjs"
@@ -29,7 +35,10 @@
     "deepseek",
     "gemini",
     "ollama",
-    "delegation"
+    "delegation",
+    "codex",
+    "opencode",
+    "mcp-server"
   ],
   "license": "MIT",
   "engines": {
