@@ -1,6 +1,6 @@
 ---
 name: delegate-work
-description: Hand a coding task to a cheap external model via forge-delegate instead of writing it yourself. Load BEFORE starting work that is high-volume and low-judgment - writing tests for code that already exists, mechanical refactors (renames, signature changes, import rewrites, API migrations), fixing lint/type/build errors, boilerplate and scaffolding (CRUD endpoints, config files, schemas, adapters, fixtures), porting code between languages or frameworks, the same edit repeated across 3 or more files, or reading a large file or directory to answer one narrow question. ALSO load for audit and survey questions - "does my codebase follow X", "audit", "review the architecture", "is this idiomatic", "where is the tech debt", "is this secure", "explore the codebase", "how does X work", "find where" - where the reading is wide but the judgment is narrow: delegate the survey, keep the verdict. Triggers on - "write tests for", "add tests", "rename X to Y everywhere", "refactor", "migrate", "port this to", "fix the lint errors", "fix the type errors", "scaffold", "boilerplate", "do the same for the other files".
+description: Hand high-volume, low-judgment coding work to a cheap external model via forge-delegate instead of writing it yourself. Load BEFORE starting tests for existing code, mechanical refactors, lint/type/build fixes, boilerplate or scaffolding, ports between languages or frameworks, the same edit across 3+ files, or reading a lot to answer one narrow question. Also load for audits and surveys, where the reading is wide but the judgment is narrow. Triggers on - "write tests for", "add tests", "rename X to Y everywhere", "refactor", "migrate", "port this to", "fix the lint errors", "fix the type errors", "scaffold", "boilerplate", "do the same for the other files", "audit", "does my codebase follow X", "is this idiomatic", "is this secure", "where is the tech debt", "explore the codebase", "how does X work", "find where".
 ---
 
 # Delegating work to a cheap model
@@ -9,8 +9,8 @@ description: Hand a coding task to a cheap external model via forge-delegate ins
 files, explores, and writes code in its own tool loop. None of that passes through
 your context — you get back a summary and a diff on disk.
 
-The point is not to save the user money on your tokens. It is that your context is
-the scarce resource in a long session, and mechanical work burns it fast.
+The point is your context: it is the scarce resource in a long session, and
+mechanical work burns it fast. Cheaper tokens are a side effect.
 
 ## Decide
 
@@ -68,12 +68,16 @@ delegate(task: "Write unit tests for the exported functions in src/parser.ts.
                 Follow the style of tests/lexer.test.ts. Cover the error paths.")
 ```
 
-Parallel or long-running work: `background: true` returns a job id immediately,
-then poll `check_delegation(id)`. Follow-up in the same area: pass the previous
-`session: <id>` back as `continue_session` so the agent skips re-exploring.
+An inline call blocks until it finishes. Claude Code moves calls past 2 minutes to
+the background; other hosts wait. So for parallel work, or anything that may run
+more than a couple of minutes outside Claude Code, pass `background: true` to get a
+job id immediately, then poll `check_delegation(id)`. Follow-up in the same area:
+pass the previous `session: <id>` back as `continue_session` so the agent skips
+re-exploring.
 
-For a question that needs no file access at all — a syntax detail, a regex, a
-second opinion — use `ask_model` instead; it is a direct API call with no agent loop.
+For a second opinion from a different model, with no file access needed, use
+`ask_model`; it is a direct API call with no agent loop. Answer ordinary syntax and
+API questions yourself — a cheap model is less reliable on those than you are.
 
 ## Don't
 

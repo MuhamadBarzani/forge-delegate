@@ -81,25 +81,15 @@ detectOpencode()
   })
   .catch(() => {});
 
-const INSTRUCTIONS = `forge-delegate hands coding work to cheap external models running as full agents. They read the project and write the code in their own loop, so the work never passes through your context. Spend your context on judgment; delegate the typing.
+const INSTRUCTIONS = `forge-delegate hands coding work to cheap external models running as full agents. They read the project and write the code in their own loop, so the work never passes through your context. Spend your context on judgment; delegate the typing. The user installed this so you would delegate: when a task matches the list in the delegate tool's description, delegate it rather than writing it yourself.
 
-DELEGATE BY DEFAULT — do not hand-write these yourself:
-- Tests for code that already exists.
-- Mechanical refactors: renames, signature changes, import rewrites, API migrations.
-- Lint, type, and build errors — paste the error output and delegate the fix.
-- Boilerplate: CRUD endpoints, config and schema files, adapters, fixtures, scaffolding.
-- Ports and translations between languages, frameworks, or file formats.
-- The same edit repeated across 3 or more files.
-- Reading a large file or directory to answer one narrow question — delegate the reading, keep your context clean.
-- The survey half of an audit ("does this follow X standards", "is this secure", "where is the tech debt", "how does X work"). Delegate the gathering, keep the verdict: ask for a structured digest with a file path behind every claim, then judge it yourself. A claim with no path is not a finding.
-
-KEEP FOR YOURSELF: architecture, debugging an unknown root cause, security-sensitive code, anything where being wrong is expensive, and the verdict on whatever comes back. Delegation does not transfer responsibility for the result.
+Keep for yourself: architecture, debugging an unknown root cause, security-sensitive code, anything where being wrong is expensive, and the verdict on whatever comes back. Delegation does not transfer responsibility for the result. For an audit or survey, delegate the gathering and keep the verdict: ask for a digest with a file path behind every claim, then judge it yourself. A claim with no path is not a finding.
 
 Routing:
-- One-shot question, no file access needed -> ask_model.
-- Anything touching files -> delegate (inline; Claude Code auto-backgrounds calls past 2 minutes).
-- Parallel fan-out or long jobs -> delegate with background:true, then poll check_delegation.
+- Anything touching files -> delegate. An inline call blocks until it finishes: Claude Code moves calls past 2 minutes to the background, other hosts wait. Outside Claude Code, pass background:true for anything that may run more than a couple of minutes, then poll check_delegation.
+- Parallel fan-out -> several delegate calls with background:true.
 - Follow-up in the same area -> pass the previous session id as continue_session.
+- A second opinion from a different model, or the user asks for one -> ask_model. Answer ordinary syntax and API questions yourself.
 - Omit model/directory/agent: the configured defaults are already correct (get_delegate_config to see them, set_delegate_config to change them — never reinstall).
 - Never paste file contents into a task. Name the paths; the agent reads them itself.
 
@@ -168,7 +158,7 @@ async function startBackgroundJob(model, task, opts = {}) {
 
 server.tool(
   "list_models",
-  "List models available for delegation: local/keyless ones, fast direct-API models from opencode logins, and agentic models from the local opencode installation.",
+  "List the models available for delegation: local/keyless ones, direct-API models from opencode logins, and agentic models from the local opencode installation. Call it when the user asks what's available or wants to change the default model, not before an ordinary delegation — those use the configured default.",
   {},
   async () =>
     withUsage("list_models", "-", async () => {
@@ -203,11 +193,11 @@ server.tool(
 
 server.tool(
   "ask_model",
-  "USE THIS INSTEAD OF ANSWERING FROM YOUR OWN REASONING when the question is self-contained and cheap to verify: a syntax or API detail, a regex, a short snippet, a second opinion on a design, a summary of text you already have. Sends a one-shot prompt to an external model and returns its raw response. Fast direct API call; the model has NO file access and CANNOT take actions — for anything touching files use delegate instead. Omit model to use the configured default (already a cheap tier).",
+  "Get a second opinion from a different model — on a design, an approach, or a tricky snippet — or ask one when the user requests it. Sends a one-shot prompt over a direct API call and returns the raw response. The model has no file access and cannot take actions; for anything touching files use delegate. Don't use it for syntax or API details you already know: a cheap model is usually less reliable than you on those. Omit model to use the configured default.",
   {
-    model: z.string().optional().describe("provider/model, e.g. deepseek/deepseek-v4-flash, ollama:llama3 (defaults to config defaultModel)"),
-    prompt: z.string(),
-    system: z.string().optional(),
+    model: z.string().optional().describe("provider/model or ollama:<name>, e.g. deepseek/deepseek-v4-flash, ollama:llama3. Omit to use the configured default; don't pick a premium tier"),
+    prompt: z.string().describe("The full question. The model has seen none of this conversation, so include the code and context it needs"),
+    system: z.string().optional().describe("Optional system prompt, e.g. a role or an answer format"),
   },
   async ({ model, prompt, system }) => {
     const r = resolveConfig({ model });
@@ -220,17 +210,17 @@ server.tool(
 
 server.tool(
   "delegate",
-  "USE THIS INSTEAD OF WRITING THE CODE YOURSELF when the task is: tests for code that already exists; a mechanical refactor (rename, signature change, import rewrite, API migration); fixing lint/type/build errors; boilerplate or scaffolding (CRUD endpoints, config, schemas, adapters, fixtures); a port between languages or frameworks; the same edit repeated across 3 or more files; reading a large file/directory to answer one narrow question; or the survey half of an audit (delegate the gathering, keep the verdict — demand a file path behind every claim). Hands the task to another AI model running as a full agent via local opencode: it reads your project, explores, and writes concrete code in its own tool loop — none of which enters your context. Keep architecture, unknown-root-cause debugging, and security-sensitive code for yourself, and always review what comes back. Runs INLINE by default (result returned when done; Claude Code auto-backgrounds calls past 2 minutes). Pass background:true to run detached and get a job id instantly, then poll check_delegation — use that for parallel fan-out or hosts that block on long calls. Pass continue_session (returned by a previous delegation) to keep the same agent session instead of re-exploring. Never paste file contents into task: name the paths and let the agent read them. model/directory/agent/autoApprove default from config — omit them.",
+  "Hand a coding task to another AI model running as a full agent via local opencode: it reads the project, explores, and writes the code in its own tool loop, none of which enters your context. Use it instead of writing the code yourself for: tests for code that already exists; a mechanical refactor (rename, signature change, import rewrite, API migration); lint/type/build errors (paste the error output); boilerplate or scaffolding (CRUD endpoints, config, schemas, adapters, fixtures); a port between languages or frameworks; the same edit repeated across 3 or more files; reading a large file or directory to answer one narrow question; the survey half of an audit. Runs inline by default and returns when done; Claude Code backgrounds calls past 2 minutes, other hosts wait. Pass background:true to get a job id at once, then poll check_delegation. Pass continue_session (returned by a previous delegation) to keep the same agent session instead of re-exploring. Name file paths in task; never paste their contents. model/directory/agent/autoApprove default from config — omit them. Review what comes back before reporting it done.",
   {
-    model: z.string().optional().describe("provider/model format, e.g. opencode/deepseek-v4.1-flash-free (defaults to config defaultModel)"),
-    task: z.string(),
-    files: z.array(z.string()).optional().describe("specific files to attach (inline mode)"),
-    background: z.boolean().optional().describe("run detached and return a job id (default false)"),
-    continue_session: z.string().optional().describe("session id returned by a previous delegation"),
-    directory: z.string().optional().describe("absolute path to run in (defaults to config defaultDirectory, else server cwd)"),
+    model: z.string().optional().describe("provider/model, e.g. opencode/deepseek-v4.1-flash-free. Omit to use the configured default; don't raise it to a premium tier — split the task instead"),
+    task: z.string().describe("Self-contained instructions: the goal, the file paths to read or change, constraints, and how to check the result (e.g. which tests to run). The agent has not seen this conversation"),
+    files: z.array(z.string()).optional().describe("Paths to attach to the agent's prompt (inline only; ignored with background:true). Rarely needed: the agent reads paths named in task itself"),
+    background: z.boolean().optional().describe("Run detached and return a job id immediately; poll check_delegation (default false)"),
+    continue_session: z.string().optional().describe("Session id from a previous delegation's result, to continue in that agent session"),
+    directory: z.string().optional().describe("Absolute path of the project to work in (defaults to config defaultDirectory, else the server's working directory)"),
     agent: z.string().optional().describe("opencode agent to use (defaults to config defaultAgent)"),
-    autoApprove: z.boolean().optional().describe("auto-approve permissions (defaults to config autoApprove, true)"),
-    profile: z.string().optional().describe("named config profile to apply"),
+    autoApprove: z.boolean().optional().describe("Let the agent edit files and run commands without asking (defaults to config autoApprove, true). When false nobody is there to approve, so actions that need approval can stall or be refused"),
+    profile: z.string().optional().describe("Named preset from config profiles (see get_delegate_config) that sets model, agent, variant, directory and autoApprove together"),
   },
   async ({ model, task, files, background, continue_session, directory, agent, autoApprove, profile }) => {
     const r = resolveConfig({ model, directory, agent, autoApprove, profile });
@@ -262,8 +252,8 @@ server.tool(
 
 server.tool(
   "check_delegation",
-  "Check status of a background delegation job: running/completed plus output so far. Call with no id to list all jobs.",
-  { id: z.string().optional() },
+  "Check a delegation started with background:true. Returns RUNNING, DONE or TIMED OUT, the elapsed time, the session id, and the last 8,000 characters of the agent's output. Each poll costs context, so wait between polls instead of checking in a tight loop. Call with no id to list all jobs.",
+  { id: z.string().optional().describe("Job id returned by delegate with background:true. Omit to list all jobs") },
   async ({ id }) =>
     withUsage("check_delegation", id ?? "-", async () => {
       if (!existsSync(RUNS_DIR)) return "no jobs yet";
@@ -315,15 +305,15 @@ server.tool(
 
 server.tool(
   "set_delegate_config",
-  "Change forge-delegate configuration at runtime — no reinstall. Pass any subset of {defaultModel, defaultAgent, defaultVariant, autoApprove, timeoutMs, defaultDirectory, profiles}. Set a field to null to clear it. To edit a profile, pass the whole profiles object (e.g. profiles: {tests: {model: \"...\"}}); set a profile to null to delete it. Only provided keys change; others are preserved.",
+  "Change forge-delegate configuration at runtime — no reinstall. Only change settings when the user asks; never raise defaultModel to a premium tier on your own. Pass any subset of {defaultModel, defaultAgent, defaultVariant, autoApprove, timeoutMs, defaultDirectory, profiles}. Set a field to null to clear it. To edit a profile, pass the whole profiles object (e.g. profiles: {tests: {model: \"...\"}}); set a profile to null to delete it. Only provided keys change; others are preserved.",
   {
-    defaultModel: z.string().nullable().optional(),
-    defaultAgent: z.string().nullable().optional(),
-    defaultVariant: z.string().nullable().optional(),
-    autoApprove: z.boolean().optional(),
-    timeoutMs: z.number().optional(),
-    defaultDirectory: z.string().nullable().optional(),
-    profiles: z.record(z.any()).optional(),
+    defaultModel: z.string().nullable().optional().describe("provider/model used when a call omits model"),
+    defaultAgent: z.string().nullable().optional().describe("opencode agent used when a call omits agent"),
+    defaultVariant: z.string().nullable().optional().describe("Reasoning-effort variant, sent to opencode as provider/model#variant"),
+    autoApprove: z.boolean().optional().describe("Let delegated agents edit files and run commands without asking"),
+    timeoutMs: z.number().optional().describe("Per-delegation timeout in milliseconds (default 900000, 15 minutes)"),
+    defaultDirectory: z.string().nullable().optional().describe("Absolute project path used when a call omits directory"),
+    profiles: z.record(z.any()).optional().describe("The whole profiles object: { name: { model, agent, variant, autoApprove, directory } }. A profile set to null is deleted"),
   },
   async (patch) => {
     try {

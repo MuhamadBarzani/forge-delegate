@@ -1,9 +1,9 @@
 # forge-delegate
 
 MCP server that delegates coding work from your primary agent (**Claude Code, Codex, or opencode**)
-to other — usually cheaper or free — AI models, so your main agent's context stays small and your
-token bill stays low. Direct API calls for quick questions; full agentic delegation via
-[opencode](https://opencode.ai) for real work.
+to other AI models, so your main agent's context stays small. The high-volume typing happens in
+another model's context, usually a cheaper or free one, and only a summary comes back. Full agentic
+delegation via [opencode](https://opencode.ai) for real work; direct API calls for second opinions.
 
 Your main agent (the expensive one) keeps architecture, critical logic, and hard decisions.
 The cheap model grinds through the high-volume, low-risk work (boilerplate, repetitive edits,
@@ -96,17 +96,17 @@ rate-limited; switch anytime with `forge-delegate config set --model <m>`.
 
 | Tool | What it does | Context cost |
 |---|---|---|
-| `ask_model` | One-shot question to any model (direct API, no file access) | Small |
+| `ask_model` | Second opinion from another model (direct API, no file access) | Small |
 | `delegate` | Model works **autonomously** via opencode's own tool loop — inline by default; `background:true` returns a job id to poll via `check_delegation` | Tiny→Medium |
 | `check_delegation` | Poll a background job (or list all with no id) | Tiny |
 | `list_models` | List local/keyless, direct-API, and agentic models | Small |
 | `get_delegate_config` | Read current configuration (default model, directory, autoApprove, profiles) | Tiny |
 | `set_delegate_config` | Change configuration at runtime — no reinstall | Tiny |
 
-`delegate` is the token-saver: the external model gets its own tool loop executed by
+`delegate` is the context-saver: the external model gets its own tool loop executed by
 opencode locally. File contents never touch your main agent's context. Fast tasks return
-inline; long ones are auto-backgrounded by Claude Code (past ~2 min) or run detached with
-`background:true` — so the delegation never blocks your session.
+inline; long ones are auto-backgrounded by Claude Code (past ~2 min). Other hosts wait for an
+inline call, so the agent is told to pass `background:true` there for anything long.
 
 ## When to delegate
 
